@@ -35,7 +35,8 @@ export default function SecureGate({
 
   useEffect(()=>{ void refresh(); },[]);
 
-  const unlocked=scope==="vault"?status?.vaultUnlocked:status?.appUnlocked;\n  const ready=Boolean(status?.hasPin&&status?.hasBiometric);
+  const unlocked=scope==="vault"?status?.vaultUnlocked:status?.appUnlocked;
+  const ready=Boolean(status?.hasPin&&status?.hasBiometric);
 
   async function verifyPin(action:"set"|"verify"){
     setBusy(true);setMessage("");
