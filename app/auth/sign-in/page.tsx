@@ -24,7 +24,8 @@ export default function SignInPage() {
         });
         if(error) throw new Error(error.message);
         setMode("signin");
-        setMessage("A fiók elkészült. Most beléphetsz.");
+        setPassword("");
+        setMessage("A fiók elkészült. Most jelentkezz be.");
       }else{
         const { error }=await authClient.signIn.email({email,password});
         if(error) throw new Error(error.message);
@@ -37,24 +38,71 @@ export default function SignInPage() {
     }
   }
 
-  return <main className="auth-page">
-    <section className="auth-card">
-      <div className="vault-emblem">⌘</div>
-      <div className="eyebrow">SZEMÉLYES KÖZPONT</div>
-      <h1>{mode==="signin"?"Belépés":"Fiók létrehozása"}</h1>
-      <p className="subtle">Privát családi, pénzügyi és vállalkozói központ.</p>
+  return <main className="auth-v2">
+    <div className="auth-v2-aurora a"/>
+    <div className="auth-v2-aurora b"/>
 
-      <form onSubmit={submit} className="form-card">
-        {mode==="signup"&&<input className="input" required placeholder="Név" value={name} onChange={e=>setName(e.target.value)}/>}
-        <input className="input" required type="email" autoComplete="email" placeholder="Email" value={email} onChange={e=>setEmail(e.target.value)}/>
-        <input className="input" required minLength={8} type="password" autoComplete={mode==="signin"?"current-password":"new-password"} placeholder="Jelszó" value={password} onChange={e=>setPassword(e.target.value)}/>
-        {message&&<div className="auth-message">{message}</div>}
-        <button className="primary-btn" disabled={busy}>{busy?"Dolgozom…":mode==="signin"?"Belépés":"Regisztráció"}</button>
-      </form>
+    <section className="auth-v2-shell">
+      <header className="auth-v2-brand">
+        <div className="auth-v2-logo">
+          <img src="/icon.svg" alt="" />
+        </div>
+        <div>
+          <div className="auth-v2-kicker">PRIVATE DIGITAL VAULT</div>
+          <h1>Személyes Központ</h1>
+        </div>
+      </header>
 
-      <button className="auth-switch" onClick={()=>{setMode(mode==="signin"?"signup":"signin");setMessage("");}}>
-        {mode==="signin"?"Még nincs fiókod? Regisztráció":"Van már fiókod? Belépés"}
-      </button>
+      <div className="auth-v2-card">
+        <div className="auth-v2-securityline">
+          <span className="auth-v2-dot"/>
+          Titkosított · Privát · Többeszközös
+        </div>
+
+        <div className="auth-v2-heading">
+          <h2>{mode==="signin"?"Üdv újra":"Hozd létre a privát tered"}</h2>
+          <p>{mode==="signin"
+            ?"Lépj be a családi, pénzügyi és vállalkozói központodba."
+            :"Egy biztonságos hely az iratoknak, pénzügyeknek és fontos adatoknak."}</p>
+        </div>
+
+        <div className="auth-v2-tabs" role="tablist">
+          <button type="button" className={mode==="signin"?"on":""} onClick={()=>{setMode("signin");setMessage("");}}>Belépés</button>
+          <button type="button" className={mode==="signup"?"on":""} onClick={()=>{setMode("signup");setMessage("");}}>Regisztráció</button>
+        </div>
+
+        <form onSubmit={submit} className="auth-v2-form">
+          {mode==="signup"&&<label className="auth-v2-field">
+            <span>Név</span>
+            <input required autoComplete="name" placeholder="A neved" value={name} onChange={e=>setName(e.target.value)}/>
+          </label>}
+
+          <label className="auth-v2-field">
+            <span>Email</span>
+            <input required type="email" autoComplete="email" placeholder="nev@email.hu" value={email} onChange={e=>setEmail(e.target.value)}/>
+          </label>
+
+          <label className="auth-v2-field">
+            <span>Jelszó</span>
+            <input required minLength={8} type="password" autoComplete={mode==="signin"?"current-password":"new-password"} placeholder="••••••••" value={password} onChange={e=>setPassword(e.target.value)}/>
+          </label>
+
+          {message&&<div className="auth-v2-message">{message}</div>}
+
+          <button className="auth-v2-primary" disabled={busy}>
+            <span>{busy?"Dolgozom…":mode==="signin"?"Belépés":"Fiók létrehozása"}</span>
+            <span aria-hidden>→</span>
+          </button>
+        </form>
+
+        <div className="auth-v2-trust">
+          <div><span>✓</span> Face ID / Passkey</div>
+          <div><span>✓</span> 6 jegyű tartalék kód</div>
+          <div><span>✓</span> Privát irattár</div>
+        </div>
+      </div>
+
+      <p className="auth-v2-foot">Az érzékeny adatok nem kerülnek a GitHubra. A jelszótár külön titkosított védelemmel működik.</p>
     </section>
   </main>;
 }
