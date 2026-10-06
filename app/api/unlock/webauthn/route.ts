@@ -7,7 +7,7 @@ import {
 import { isoUint8Array } from "@simplewebauthn/server/helpers";
 import { requireUser } from "@/lib/neon/session";
 import { sql } from "@/lib/neon/db";
-import { issueUnlock } from "@/lib/unlock/session";
+import { issueUnlock, type UnlockScope } from "@/lib/unlock/session";
 
 function rp(request:Request){
   const url=new URL(request.url);
@@ -83,7 +83,7 @@ export async function GET(request:Request){
 export async function POST(request:Request){
   try{
     const user=await requireUser();
-    const body=await request.json() as {action:"register"|"authenticate";response:any};
+    const body=await request.json() as {action:"register"|"authenticate";response:any;scope?:UnlockScope};\n    const scope:UnlockScope=body.scope==="vault"?"vault":"app";
     const db=sql();
     const {rpID,origin}=rp(request);
     const purpose=body.action==="register"?"register":"authenticate";
@@ -122,7 +122,7 @@ export async function POST(request:Request){
           backed_up=excluded.backed_up,
           last_used_at=now()
       `;
-      await issueUnlock(user.id);
+      await issueUnlock(user.id,scope);
       return Response.json({verified:true});
     }
 
@@ -154,7 +154,7 @@ export async function POST(request:Request){
       set counter=${verification.authenticationInfo.newCounter},last_used_at=now()
       where credential_id=${credentialRow.credential_id}
     `;
-    await issueUnlock(user.id);
+    await issueUnlock(user.id,scope);
     return Response.json({verified:true});
   }catch(error){
     if(error instanceof Error&&error.message==="UNAUTHORIZED") return Response.json({error:"Nincs bejelentkezve."},{status:401});
