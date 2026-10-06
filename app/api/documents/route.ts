@@ -1,6 +1,6 @@
 import { GetObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import { getOrCreateHousehold } from "@/lib/neon/household";
+import { requireHouseholdRole } from "@/lib/neon/authorization";
 import { sql } from "@/lib/neon/db";
 import { DOCUMENT_BUCKET, storageClient } from "@/lib/neon/storage";
 
@@ -13,7 +13,7 @@ function extFor(type:string){
 
 export async function GET(){
   try{
-    const {household}=await getOrCreateHousehold();
+    const {household}=await requireHouseholdRole(["owner","family"]);
     const db=sql();
     const rows=await db`
       select d.id,d.family_member_id,d.kind,d.title,d.issue_date,d.expiry_date,d.note,d.storage_key,d.created_at,
@@ -46,7 +46,7 @@ export async function GET(){
 
 export async function POST(request:Request){
   try{
-    const {user,household}=await getOrCreateHousehold();
+    const {user,household}=await requireHouseholdRole(["owner","family"]);
     const body=await request.json() as {
       action?:"prepare"|"finalize";
       familyMemberId?:string;
