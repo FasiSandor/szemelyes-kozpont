@@ -35,7 +35,7 @@ export default function SecureGate({
 
   useEffect(()=>{ void refresh(); },[]);
 
-  const unlocked=scope==="vault"?status?.vaultUnlocked:status?.appUnlocked;
+  const unlocked=scope==="vault"?status?.vaultUnlocked:status?.appUnlocked;\n  const ready=Boolean(status?.hasPin&&status?.hasBiometric);
 
   async function verifyPin(action:"set"|"verify"){
     setBusy(true);setMessage("");
@@ -91,7 +91,7 @@ export default function SecureGate({
     return <main className="lock-screen"><div className="lock-orb"><span/></div><div className="lock-copy"><div className="eyebrow">SZEMÉLYES KÖZPONT</div><h1>Biztonságos megnyitás</h1><p>Azonosítás előkészítése…</p></div></main>;
   }
 
-  if(unlocked) return <>{children}</>;
+  if(unlocked&&ready) return <>{children}</>;
 
   const firstSetup=!status.hasPin&&!status.hasBiometric;
 
