@@ -502,3 +502,12 @@ textarea.input{resize:vertical;min-height:62px;padding-top:11px}
 @keyframes analyticsRise{from{transform:scaleY(.02);opacity:.35}to{transform:scaleY(1);opacity:1}}
 @keyframes fadeIn{from{opacity:0}to{opacity:1}}@keyframes sheetUp{from{transform:translateY(24px);opacity:0}to{transform:translateY(0);opacity:1}}
 @media(max-width:700px){.analytics-two{grid-template-columns:1fr}.nav-month-picker{grid-template-columns:repeat(3,1fr)}}
+
+
+/* NAV period data badges */
+.nav-quarter-chips .chip{display:inline-flex;align-items:center;gap:6px}
+.nav-quarter-chips .chip small{font-size:9px;color:#7F91AA}
+.nav-quarter-chips .chip.on small{color:#DBEAFE}
+.nav-month-picker button{display:flex;align-items:center;justify-content:center;gap:5px}
+.nav-month-picker button small{font-size:8px;color:#64748B}
+.nav-month-picker button.on small{color:#E0F2FE}
