@@ -509,7 +509,9 @@ function IssuedInvoiceCenter({navMode=false}:{navMode?:boolean}){
   },[data?.invoices,periodMode,year]);
 
   useEffect(()=>{
-    if(periodMode!=="months"||months.length||!data?.invoices?.length) return;
+    if(periodMode!=="months"||!data?.invoices?.length) return;
+    const selectedHasData=months.some(m=>(monthCounts.find(x=>x.month===m)?.count||0)>0);
+    if(selectedHasData) return;
     const latest=[...monthCounts].reverse().find(x=>x.count>0);
     if(latest) setMonths([latest.month]);
   },[data?.invoices,periodMode,year]);
