@@ -51,6 +51,8 @@ create table documents (
   family_member_id uuid not null references family_members(id) on delete cascade,
   kind document_kind not null default 'other',
   title text not null,
+  document_group_id uuid not null default gen_random_uuid(),
+  side text not null default 'front' check (side in ('front','back')),
   storage_bucket text not null default 'personal-documents',
   storage_key text not null,
   issue_date date,
@@ -63,6 +65,9 @@ create table documents (
 
 create index documents_member_idx
   on documents(family_member_id, created_at desc);
+
+create index documents_group_idx
+  on documents(document_group_id, side);
 
 create index documents_expiry_idx
   on documents(expiry_date)
