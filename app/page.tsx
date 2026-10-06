@@ -91,25 +91,36 @@ function Home({go}:{go:(s:Screen)=>void}) {
 }
 function Docs() {
   type RemoteMember={id:string;display_name:string;relation:string|null;linked_user_id:string|null};
+  type DocPhoto={id:string;imageUrl:string;storageKey:string};
   type RemoteDocument={
-    id:string;
-    family_member_id:string;
-    kind:string;
-    title:string;
-    issue_date:string|null;
-    expiry_date:string|null;
-    note:string|null;
-    created_at:string;
-    member_name:string;
-    imageUrl:string;
+    id:string;family_member_id:string;kind:string;title:string;issue_date:string|null;
+    expiry_date:string|null;note:string|null;created_at:string;member_name:string;
+    front:DocPhoto|null;back:DocPhoto|null;
   };
+
+  const kindOptions=[
+    ["identity","Személyazonosító igazolvány"],["address","Lakcímkártya"],["tax","Adókártya"],
+    ["health","TAJ kártya"],["student","Diákigazolvány"],["teacher","Pedagógusigazolvány"],
+    ["vehicle","Jármű okmány"],["insurance","Biztosítás"],["contract","Szerződés"],
+    ["shopping_card","Kártya / tagság"],["other","Egyéb irat"]
+  ] as const;
 
   const [family,setFamily]=useState<RemoteMember[]>([]);
   const [personId,setPersonId]=useState("");
   const [documents,setDocuments]=useState<RemoteDocument[]>([]);
   const [loading,setLoading]=useState(true);
   const [message,setMessage]=useState("");
-  const fileRef=useRef<HTMLInputElement>(null);
+  const [showForm,setShowForm]=useState(false);
+  const [saving,setSaving]=useState(false);
+  const [kind,setKind]=useState("identity");
+  const [title,setTitle]=useState("Személyazonosító igazolvány");
+  const [issueDate,setIssueDate]=useState("");
+  const [expiryDate,setExpiryDate]=useState("");
+  const [note,setNote]=useState("");
+  const [frontFile,setFrontFile]=useState<File|null>(null);
+  const [backFile,setBackFile]=useState<File|null>(null);
+  const frontRef=useRef<HTMLInputElement>(null);
+  const backRef=useRef<HTMLInputElement>(null);
 
   async function loadHousehold(){
     const res=await fetch("/api/household",{cache:"no-store"});
@@ -122,78 +133,84 @@ function Docs() {
 
   async function loadDocuments(){
     const res=await fetch("/api/documents",{cache:"no-store"});
-    if(res.status===503){
-      setDocuments([]);
-      setMessage("A felhős irattár kódja kész, a tárhely-kulcsokat az első Vercel deploynál kötjük be.");
-      return;
-    }
     if(!res.ok) throw new Error("Az iratok nem tölthetők be.");
     const data=await res.json();
     setDocuments(data.documents||[]);
-    setMessage("");
   }
 
   useEffect(()=>{
     let active=true;
     (async()=>{
-      try{
-        await Promise.all([loadHousehold(),loadDocuments()]);
-      }catch(e){
-        if(active) setMessage(e instanceof Error?e.message:"Betöltési hiba.");
-      }finally{
-        if(active) setLoading(false);
-      }
+      try{await Promise.all([loadHousehold(),loadDocuments()]);}
+      catch(e){if(active) setMessage(e instanceof Error?e.message:"Betöltési hiba.");}
+      finally{if(active) setLoading(false);}
     })();
     return()=>{active=false;};
   },[]);
 
-  async function handlePhoto(file?:File){
-    if(!file||!personId) return;
-    setMessage("Feltöltés előkészítése…");
+  function resetForm(){
+    setKind("identity");setTitle("Személyazonosító igazolvány");
+    setIssueDate("");setExpiryDate("");setNote("");
+    setFrontFile(null);setBackFile(null);setShowForm(false);
+  }
+
+  function changeKind(next:string){
+    setKind(next);
+    const label=kindOptions.find(([value])=>value===next)?.[1]||"Egyéb irat";
+    setTitle(label);
+  }
+
+  async function uploadSide(file:File,side:"front"|"back",groupId?:string){
+    const prepare=await fetch("/api/documents",{
+      method:"POST",headers:{"content-type":"application/json"},
+      body:JSON.stringify({
+        action:"prepare",familyMemberId:personId,title,kind,
+        contentType:file.type||"image/jpeg",documentGroupId:groupId,side
+      })
+    });
+    const prep=await prepare.json();
+    if(!prepare.ok) throw new Error(prep.error||"A feltöltés előkészítése nem sikerült.");
+
+    const upload=await fetch(prep.uploadUrl,{
+      method:"PUT",headers:{"content-type":file.type||"image/jpeg"},body:file
+    });
+    if(!upload.ok) throw new Error("A fotó feltöltése nem sikerült.");
+
+    const finalize=await fetch("/api/documents",{
+      method:"POST",headers:{"content-type":"application/json"},
+      body:JSON.stringify({
+        action:"finalize",familyMemberId:personId,title,kind,
+        storageKey:prep.storageKey,documentGroupId:prep.documentGroupId,side,
+        issueDate:issueDate||null,expiryDate:expiryDate||null,note:note||null
+      })
+    });
+    const saved=await finalize.json();
+    if(!finalize.ok) throw new Error(saved.error||"Az irat mentése nem sikerült.");
+    return prep.documentGroupId as string;
+  }
+
+  async function saveDocument(){
+    if(!personId||!frontFile||!title.trim()) return;
+    setSaving(true);setMessage("");
     try{
-      const title=window.prompt("Milyen irat? (pl. személyi, TAJ, adókártya)")?.trim()||"Egyéb irat";
-      const prepare=await fetch("/api/documents",{
-        method:"POST",
-        headers:{"content-type":"application/json"},
-        body:JSON.stringify({
-          action:"prepare",
-          familyMemberId:personId,
-          title,
-          kind:"other",
-          contentType:file.type||"image/jpeg"
-        })
-      });
-      const prep=await prepare.json();
-      if(!prepare.ok) throw new Error(prep.error||"Nem sikerült előkészíteni a feltöltést.");
-
-      const upload=await fetch(prep.uploadUrl,{
-        method:"PUT",
-        headers:{"content-type":file.type||"image/jpeg"},
-        body:file
-      });
-      if(!upload.ok) throw new Error("A fotó feltöltése nem sikerült.");
-
-      const finalize=await fetch("/api/documents",{
-        method:"POST",
-        headers:{"content-type":"application/json"},
-        body:JSON.stringify({
-          action:"finalize",
-          familyMemberId:personId,
-          title,
-          kind:"other",
-          storageKey:prep.storageKey
-        })
-      });
-      const saved=await finalize.json();
-      if(!finalize.ok) throw new Error(saved.error||"Nem sikerült menteni az iratot.");
-
+      const groupId=await uploadSide(frontFile,"front");
+      if(backFile) await uploadSide(backFile,"back",groupId);
       await loadDocuments();
       setMessage("Az irat biztonságosan elmentve.");
+      resetForm();
     }catch(e){
-      setMessage(e instanceof Error?e.message:"Nem sikerült a feltöltés.");
-    }finally{
-      if(fileRef.current) fileRef.current.value="";
-    }
+      setMessage(e instanceof Error?e.message:"Nem sikerült menteni az iratot.");
+    }finally{setSaving(false);}
+  }
+
+  async function deleteDocument(doc:RemoteDocument){
+    if(!window.confirm(`Biztosan törlöd ezt az iratot?\n\n${doc.title}`)) return;
+    setMessage("Törlés…");
+    const res=await fetch("/api/documents?groupId="+encodeURIComponent(doc.id),{method:"DELETE"});
+    const data=await res.json();
+    if(!res.ok){setMessage(data.error||"Nem sikerült törölni.");return;}
+    await loadDocuments();
+    setMessage("Az irat törölve.");
   }
 
   async function addFamilyMember(){
@@ -201,17 +218,21 @@ function Docs() {
     if(!displayName) return;
     const relation=window.prompt("Kapcsolat (pl. gyermek, házastárs)")?.trim()||"Családtag";
     const res=await fetch("/api/household",{
-      method:"POST",
-      headers:{"content-type":"application/json"},
+      method:"POST",headers:{"content-type":"application/json"},
       body:JSON.stringify({displayName,relation})
     });
     const data=await res.json();
-    if(!res.ok){
-      setMessage(data.error||"Nem sikerült hozzáadni.");
-      return;
-    }
+    if(!res.ok){setMessage(data.error||"Nem sikerült hozzáadni.");return;}
     await loadHousehold();
     if(data.member?.id) setPersonId(data.member.id);
+  }
+
+  function expiryBadge(doc:RemoteDocument){
+    if(!doc.expiry_date) return <span className="badge green">Nincs lejárat</span>;
+    const days=Math.ceil((new Date(doc.expiry_date).getTime()-Date.now())/86400000);
+    if(days<0) return <span className="badge" style={{color:"#fca5a5",borderColor:"rgba(239,68,68,.35)"}}>Lejárt</span>;
+    if(days<=30) return <span className="badge amber">{days} nap</span>;
+    return <span className="badge green">Érvényes</span>;
   }
 
   const selected=family.find(x=>x.id===personId)??family[0];
@@ -234,37 +255,66 @@ function Docs() {
         <div className="section-title" style={{margin:0}}>Okmányok</div>
         <div className="label">{selected?selected.display_name+" · "+(selected.relation||"Családtag"):"Családi tér"}</div>
       </div>
-      <button className="primary-btn" disabled={!personId} onClick={()=>fileRef.current?.click()}>＋ Fényképezés</button>
-      <input ref={fileRef} className="sr-only" type="file" accept="image/*" capture="environment" onChange={e=>handlePhoto(e.target.files?.[0])}/>
+      <button className="primary-btn" disabled={!personId} onClick={()=>setShowForm(true)}>＋ Új irat</button>
     </div>
 
     <div className="notice" style={{marginTop:12}}>
       <div className="row"><Icon tone="green">✓</Icon><div>
         <b>Privát, többeszközös irattár</b>
-        <div className="label">A képek a Neon privát tárhelyére kerülnek, és csak rövid ideig érvényes letöltési linkkel nyithatók meg.</div>
+        <div className="label">Előlap, hátlap, lejárat és családtag egy helyen. A fotók privát tárhelyen maradnak.</div>
       </div></div>
     </div>
 
     {message&&<div className="auth-message" style={{marginTop:12}}>{message}</div>}
 
+    {showForm&&<div className="card doc-editor" style={{marginTop:12}}>
+      <div className="row between"><div><b>Új irat</b><div className="label">{selected?.display_name}</div></div><button className="ghost-btn" onClick={resetForm}>Bezárás</button></div>
+      <div className="form-card" style={{marginTop:14}}>
+        <label className="label">Irat típusa</label>
+        <select className="input" value={kind} onChange={e=>changeKind(e.target.value)}>
+          {kindOptions.map(([value,label])=><option value={value} key={value}>{label}</option>)}
+        </select>
+        <input className="input" value={title} onChange={e=>setTitle(e.target.value)} placeholder="Irat neve"/>
+        <div className="doc-date-grid">
+          <label><span className="label">Kiállítás</span><input className="input" type="date" value={issueDate} onChange={e=>setIssueDate(e.target.value)}/></label>
+          <label><span className="label">Lejárat</span><input className="input" type="date" value={expiryDate} onChange={e=>setExpiryDate(e.target.value)}/></label>
+        </div>
+        <textarea className="input" rows={2} value={note} onChange={e=>setNote(e.target.value)} placeholder="Megjegyzés (opcionális)"/>
+        <div className="doc-upload-grid">
+          <button className={"doc-upload "+(frontFile?"ready":"")} onClick={()=>frontRef.current?.click()}>
+            <span className="doc-upload-icon">{frontFile?"✓":"＋"}</span><b>Előlap</b><small>{frontFile?frontFile.name:"Fotó készítése / kiválasztása"}</small>
+          </button>
+          <button className={"doc-upload "+(backFile?"ready":"")} onClick={()=>backRef.current?.click()}>
+            <span className="doc-upload-icon">{backFile?"✓":"＋"}</span><b>Hátlap</b><small>{backFile?backFile.name:"Opcionális"}</small>
+          </button>
+        </div>
+        <input ref={frontRef} className="sr-only" type="file" accept="image/*" capture="environment" onChange={e=>setFrontFile(e.target.files?.[0]||null)}/>
+        <input ref={backRef} className="sr-only" type="file" accept="image/*" capture="environment" onChange={e=>setBackFile(e.target.files?.[0]||null)}/>
+        <button className="primary-btn" disabled={!frontFile||saving} onClick={saveDocument}>{saving?"Mentés…":"Irat mentése"}</button>
+      </div>
+    </div>}
+
     {loading?<div className="empty-card"><div className="empty-icon">◷</div><b>Betöltés…</b></div>:
     visible.length===0?<div className="empty-card">
-      <div className="empty-icon">▤</div>
-      <b>Még nincs feltöltött irat</b>
-      <div className="label">A Fényképezés gomb a telefon kameráját nyitja meg.</div>
+      <div className="empty-icon">▤</div><b>Még nincs feltöltött irat</b>
+      <div className="label">Az „Új irat” gombbal előlapot és hátlapot is menthetsz.</div>
     </div>:
     <div className="grid doc-grid" style={{marginTop:12}}>
       {visible.map(doc=><div className="card compact-doc" key={doc.id}>
-        <button className="photo-wrap" onClick={()=>window.open(doc.imageUrl,"_blank")} style={{border:0,padding:0,width:"100%",cursor:"pointer"}}>
-          <img src={doc.imageUrl} alt={doc.title}/>
-        </button>
-        <div className="row between" style={{marginTop:10}}>
-          <div>
-            <div className="doc-name">{doc.title}</div>
-            <div className="doc-meta">{new Date(doc.created_at).toLocaleDateString("hu-HU")}</div>
-          </div>
-          <span className="badge green">Privát</span>
+        <div className="doc-photo-stack">
+          {doc.front?<button className="photo-wrap" onClick={()=>window.open(doc.front!.imageUrl,"_blank")}><img src={doc.front.imageUrl} alt={doc.title+" előlap"}/><span>Előlap</span></button>:<div className="photo-wrap missing">Nincs előlap</div>}
+          {doc.back&&<button className="photo-wrap back" onClick={()=>window.open(doc.back!.imageUrl,"_blank")}><img src={doc.back.imageUrl} alt={doc.title+" hátlap"}/><span>Hátlap</span></button>}
         </div>
+        <div className="row between" style={{marginTop:11,alignItems:"flex-start"}}>
+          <div className="grow"><div className="doc-name">{doc.title}</div><div className="doc-meta">{doc.member_name}</div></div>
+          {expiryBadge(doc)}
+        </div>
+        <div className="doc-meta-row">
+          <span>{doc.expiry_date?"Lejár: "+new Date(doc.expiry_date).toLocaleDateString("hu-HU"):"Határozatlan / nincs megadva"}</span>
+          <span>{doc.back?"2 oldal":"1 oldal"}</span>
+        </div>
+        {doc.note&&<div className="doc-note">{doc.note}</div>}
+        <button className="doc-delete" onClick={()=>deleteDocument(doc)}>Irat törlése</button>
       </div>)}
     </div>}
   </div>
