@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { authClient } from "@/lib/neon/auth";
 
 export default function SignInPage() {
@@ -10,6 +10,19 @@ export default function SignInPage() {
   const [password,setPassword]=useState("");
   const [busy,setBusy]=useState(false);
   const [message,setMessage]=useState("");
+
+  useEffect(()=>{
+    let active=true;
+    (async()=>{
+      try{
+        const { data }=await authClient.getSession();
+        if(active&&data?.user) window.location.replace("/");
+      }catch{
+        // A lejárt vagy hiányzó session normális állapot a belépőoldalon.
+      }
+    })();
+    return()=>{active=false;};
+  },[]);
 
   async function submit(e:FormEvent){
     e.preventDefault();
@@ -29,7 +42,7 @@ export default function SignInPage() {
       }else{
         const { error }=await authClient.signIn.email({email,password});
         if(error) throw new Error(error.message);
-        window.location.href="/";
+        window.location.replace("/");
       }
     }catch(err){
       setMessage(err instanceof Error?err.message:"Nem sikerült a művelet.");
