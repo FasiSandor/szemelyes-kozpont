@@ -442,6 +442,7 @@ function IssuedInvoiceCenter({navMode=false}:{navMode?:boolean}){
     const json=await res.json();
     if(!res.ok){setMessage(json.error||"Nem sikerült menteni.");return;}
     setShowConfig(false);
+    setForm(v=>({...v,login:"",password:"",signKey:""}));
     setMessage("NAV kapcsolat elmentve. Most szinkronizálhatod a számlákat.");
     await load("");
   }
@@ -499,8 +500,26 @@ function IssuedInvoiceCenter({navMode=false}:{navMode?:boolean}){
         <div className="row"><span className={"nav-live-dot "+(data.lastSyncStatus==="error"?"error":"")}/><b>{data.businessName}</b></div>
         <div className="label">{data.taxNumber} · {data.lastSyncAt?"Utolsó szinkron: "+new Date(data.lastSyncAt).toLocaleString("hu-HU"):"Még nem volt szinkron"}</div>
       </div>
-      <button className="primary-btn compact" disabled={syncing} onClick={sync}>{syncing?"Szinkron…":"↻ NAV frissítés"}</button>
+      <div className="nav-sync-actions">
+        <button className="ghost-btn" onClick={()=>setShowConfig(v=>!v)}>Kapcsolat módosítása</button>
+        <button className="primary-btn compact" disabled={syncing} onClick={sync}>{syncing?"Szinkron…":"↻ NAV frissítés"}</button>
+      </div>
     </div>
+
+    {showConfig&&<div className="card nav-config-card">
+      <div className="row between">
+        <div><b>NAV kapcsolat módosítása</b><div className="label">Az adószámot átírhatod. A titkos mezőket hagyd üresen, ha nem változtak.</div></div>
+        <button className="ghost-btn" onClick={()=>setShowConfig(false)}>Bezárás</button>
+      </div>
+      <div className="form-card" style={{marginTop:12}}>
+        <input className="input" placeholder="Vállalkozás neve" value={form.businessName} onChange={e=>setForm({...form,businessName:e.target.value})}/>
+        <input className="input" inputMode="numeric" placeholder="Adószám első 8 számjegye" value={form.taxNumber} onChange={e=>setForm({...form,taxNumber:e.target.value.replace(/\D/g,"").slice(0,8)})}/>
+        <input className="input" autoCapitalize="none" placeholder="Technikai felhasználó login — csak ha változott" value={form.login} onChange={e=>setForm({...form,login:e.target.value})}/>
+        <input className="input" type="password" placeholder="Technikai jelszó — csak ha változott" value={form.password} onChange={e=>setForm({...form,password:e.target.value})}/>
+        <input className="input" type="password" placeholder="XML aláírókulcs — csak ha változott" value={form.signKey} onChange={e=>setForm({...form,signKey:e.target.value})}/>
+        <button className="primary-btn" onClick={saveConfig}>Módosítás mentése</button>
+      </div>
+    </div>}
 
     {message&&<div className="auth-message">{message}</div>}
     {data.lastError&&<div className="security-v2-message">Legutóbbi NAV hiba: {data.lastError}</div>}

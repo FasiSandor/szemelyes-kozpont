@@ -50,15 +50,29 @@ export async function getNavAuth(){
 export async function saveNavIntegration(input:{
   businessName:string;
   taxNumber:string;
-  login:string;
-  password:string;
-  signKey:string;
+  login?:string;
+  password?:string;
+  signKey?:string;
 }){
   const {user,household}=await requireHouseholdRole(["owner"]);
   const db=sql();
   const tax=input.taxNumber.replace(/\D/g,"").slice(0,8);
   if(tax.length!==8) throw new Error("INVALID_TAX_NUMBER");
-  if(!input.login.trim()||!input.password.trim()||!input.signKey.trim()) throw new Error("MISSING_NAV_CREDENTIALS");
+
+  const current=await db`
+    select credentials_cipher
+    from nav_integrations
+    where household_id=${household.id}
+    limit 1
+  `;
+  const existingCreds=current[0]?.credentials_cipher
+    ? decryptNavCredentials(current[0].credentials_cipher)
+    : null;
+
+  const login=input.login?.trim()||existingCreds?.login||"";
+  const password=input.password||existingCreds?.password||"";
+  const signKey=input.signKey?.trim()||existingCreds?.signKey||"";
+  if(!login||!password||!signKey) throw new Error("MISSING_NAV_CREDENTIALS");
 
   const existingBusiness=await db`
     select id from businesses
@@ -81,11 +95,7 @@ export async function saveNavIntegration(input:{
     `;
   }
 
-  const cipher=encryptNavCredentials({
-    login:input.login.trim(),
-    password:input.password,
-    signKey:input.signKey.trim(),
-  });
+  const cipher=encryptNavCredentials({login,password,signKey});
 
   await db`
     insert into nav_integrations(
