@@ -136,8 +136,20 @@ async function post(endpoint:string,body:string){
     cache:"no-store",
   });
   const text=await res.text();
-  if(!res.ok) throw new Error(`NAV HTTP ${res.status}: ${text.slice(0,240)}`);
-  return parser.parse(text);
+  let parsed:any=null;
+  try{parsed=parser.parse(text);}catch{}
+
+  const general=parsed?.GeneralErrorResponse;
+  if(!res.ok||general){
+    const notes=asArray<any>(general?.notifications?.notification);
+    const validations=asArray<any>(general?.technicalValidationMessages);
+    const details=[
+      ...notes.map((n:any)=>[n?.errorCode,n?.message,n?.info].filter(Boolean).join(" · ")),
+      ...validations.map((v:any)=>[v?.validationResultCode,v?.validationErrorCode,v?.message].filter(Boolean).join(" · "))
+    ].filter(Boolean);
+    throw new Error(details.length?`NAV: ${details.join(" | ")}`:`NAV HTTP ${res.status}: a NAV elutasította a kérést.`);
+  }
+  return parsed;
 }
 
 export async function queryIssuedInvoiceDigestPage(
