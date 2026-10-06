@@ -46,6 +46,18 @@ function MiniChart() {
   return <div className="chart">{bars.map((h,i)=><div className="bar" key={i} style={{height:h+"%"}} />)}</div>
 }
 function Home({go}:{go:(s:Screen)=>void}) {
+  const [navData,setNavData]=useState<NavInvoiceData|null>(null);
+  useEffect(()=>{
+    let active=true;
+    fetch("/api/nav/invoices?year="+new Date().getFullYear(),{cache:"no-store"})
+      .then(r=>r.json())
+      .then(data=>{if(active)setNavData(data);})
+      .catch(()=>{});
+    return()=>{active=false;};
+  },[]);
+  const navReady=Boolean(navData?.configured);
+  const navSummary=navData?.summary;
+
   return <div className="page">
     <Header/>
     <div className="notice">
@@ -60,11 +72,15 @@ function Home({go}:{go:(s:Screen)=>void}) {
     <div className="grid hero-grid">
       <button className="card active" onClick={()=>go("business")} style={{textAlign:"left",color:"inherit"}}>
         <div className="row between"><Icon>▥</Icon><span className="badge">Vállalkozás</span></div>
-        <div className="label" style={{marginTop:12}}>2026 bevétel</div><div className="metric">312 500 Ft</div><div className="delta">↗ +12,4%</div>
+        <div className="label" style={{marginTop:12}}>{new Date().getFullYear()} kiállított számlák</div>
+        <div className="metric">{navReady?money(navSummary?.issued_gross_huf):"NAV kapcsolat"}</div>
+        <div className="delta">{navReady?`${navSummary?.issued_count||0} db számla`:"Állítsd be a számlákhoz"}</div>
       </button>
       <button className="card" onClick={()=>go("nav")} style={{textAlign:"left",color:"inherit"}}>
-        <div className="row between"><Icon tone="green">N</Icon><span className="badge green">Rendben</span></div>
-        <div className="label" style={{marginTop:12}}>NAV</div><div className="metric" style={{fontSize:18}}>Nincs lejárt tétel</div><div className="delta">Köv.: 2026.11.12.</div>
+        <div className="row between"><Icon tone={navReady?"green":""}>N</Icon><span className={"badge "+(navReady?"green":"amber")}>{navReady?"Kapcsolva":"Nincs bekötve"}</span></div>
+        <div className="label" style={{marginTop:12}}>NAV Online Számla</div>
+        <div className="metric" style={{fontSize:18}}>{navReady?`${navSummary?.issued_count||0} kiállított számla`:"Kapcsolat beállítása"}</div>
+        <div className="delta">{navReady?(navData?.lastSyncAt?"Frissítve: "+new Date(navData.lastSyncAt).toLocaleDateString("hu-HU"):"Szinkronra vár"):"Technikai felhasználó szükséges"}</div>
       </button>
       <MetricCard icon="◴" label="Októberi kiadás" value="286 400 Ft" delta="↗ +5,2%"/>
       <MetricCard icon="♙" label="Család" value="4 profil" delta="1 közelgő lejárat" tone="amber"/>
