@@ -333,32 +333,233 @@ function Finance() {
     </div></div>
   </div>
 }
+type NavInvoiceRow={
+  id:string;
+  invoice_number:string|null;
+  partner_name:string|null;
+  issue_date:string;
+  paid_at:string|null;
+  net_amount_huf:string|number|null;
+  vat_amount_huf:string|number|null;
+  gross_amount_huf:string|number;
+  status:string;
+  currency:string;
+  customer_tax_number:string|null;
+  invoice_category:string|null;
+  payment_method:string|null;
+  payment_date:string|null;
+  invoice_delivery:string|null;
+  invoice_appearance:string|null;
+  invoice_operation:string|null;
+  original_invoice_number:string|null;
+  nav_source:string|null;
+};
+type NavSummary={
+  issued_count:number;
+  issued_gross_huf:string|number;
+  modify_count:number;
+  storno_count:number;
+  customer_count:number;
+  average_gross_huf:string|number;
+  paid_count:number;
+};
+type NavInvoiceData={
+  configured:boolean;
+  businessName?:string;
+  taxNumber?:string;
+  lastSyncAt?:string|null;
+  lastSyncStatus?:string|null;
+  lastError?:string|null;
+  summary?:NavSummary|null;
+  monthly?:{month:string;count:number;gross_huf:string|number}[];
+  invoices?:NavInvoiceRow[];
+};
+
+function money(value:unknown){
+  const n=Number(value??0);
+  return new Intl.NumberFormat("hu-HU",{maximumFractionDigits:0}).format(Number.isFinite(n)?n:0)+" Ft";
+}
+function prettyMethod(value:string|null){
+  if(!value) return "Nincs megadva";
+  const map:Record<string,string>={CASH:"Készpénz",TRANSFER:"Átutalás",CARD:"Bankkártya",VOUCHER:"Utalvány",OTHER:"Egyéb"};
+  return map[value]||value;
+}
+function prettyOperation(value:string|null){
+  const map:Record<string,string>={CREATE:"Kiállított",MODIFY:"Módosítás",STORNO:"Stornó"};
+  return map[value||""]||value||"Kiállított";
+}
+
+function IssuedInvoiceCenter({navMode=false}:{navMode?:boolean}){
+  const currentYear=new Date().getFullYear();
+  const [year,setYear]=useState(currentYear);
+  const [data,setData]=useState<NavInvoiceData|null>(null);
+  const [loading,setLoading]=useState(true);
+  const [syncing,setSyncing]=useState(false);
+  const [q,setQ]=useState("");
+  const [op,setOp]=useState<"ALL"|"CREATE"|"MODIFY"|"STORNO">("ALL");
+  const [selected,setSelected]=useState<NavInvoiceRow|null>(null);
+  const [showConfig,setShowConfig]=useState(false);
+  const [message,setMessage]=useState("");
+  const [form,setForm]=useState({businessName:"Egyéni vállalkozás",taxNumber:"",login:"",password:"",signKey:""});
+
+  async function load(search=q){
+    setLoading(true);
+    try{
+      const res=await fetch(`/api/nav/invoices?year=${year}&q=${encodeURIComponent(search)}`,{cache:"no-store"});
+      const json=await res.json();
+      if(!res.ok) throw new Error(json.error||"Nem sikerült betölteni a számlákat.");
+      setData(json);
+      if(json.configured){
+        setForm(v=>({...v,businessName:json.businessName||v.businessName,taxNumber:json.taxNumber||v.taxNumber}));
+      }
+    }catch(e){setMessage(e instanceof Error?e.message:"Betöltési hiba.");}
+    finally{setLoading(false);}
+  }
+
+  useEffect(()=>{void load("");},[year]);
+
+  async function saveConfig(){
+    setMessage("NAV kapcsolat mentése…");
+    const res=await fetch("/api/nav/config",{
+      method:"PUT",headers:{"content-type":"application/json"},body:JSON.stringify(form)
+    });
+    const json=await res.json();
+    if(!res.ok){setMessage(json.error||"Nem sikerült menteni.");return;}
+    setShowConfig(false);
+    setMessage("NAV kapcsolat elmentve. Most szinkronizálhatod a számlákat.");
+    await load("");
+  }
+
+  async function sync(){
+    setSyncing(true);setMessage("NAV számlák szinkronizálása…");
+    try{
+      const today=new Date();
+      const to=year===today.getFullYear()?today.toISOString().slice(0,10):`${year}-12-31`;
+      const res=await fetch("/api/nav/invoices",{
+        method:"POST",headers:{"content-type":"application/json"},
+        body:JSON.stringify({from:`${year}-01-01`,to})
+      });
+      const json=await res.json();
+      if(!res.ok) throw new Error(json.error||"A NAV szinkron nem sikerült.");
+      setMessage(`Szinkron kész: ${json.seen} NAV tétel feldolgozva.`);
+      await load(q);
+    }catch(e){setMessage(e instanceof Error?e.message:"NAV szinkron hiba.");}
+    finally{setSyncing(false);}
+  }
+
+  const invoices=(data?.invoices||[]).filter(x=>op==="ALL"||x.invoice_operation===op);
+  const summary=data?.summary;
+  const monthly=data?.monthly||[];
+  const maxMonth=Math.max(1,...monthly.map(x=>Number(x.gross_huf||0)));
+
+  if(loading&&!data) return <div className="card nav-loading"><div className="security-v2-loader"/><span>NAV számlák betöltése…</span></div>;
+
+  if(!data?.configured){
+    return <div className="nav-connect-wrap">
+      <div className="card nav-connect-card active">
+        <div className="row between"><Icon>N</Icon><span className="badge amber">Kapcsolat szükséges</span></div>
+        <h2>Online Számla kapcsolat</h2>
+        <p className="subtle">A kiállított számláid automatikus lekéréséhez egyszer kell megadni a NAV technikai felhasználót. Az adatok titkosítva kerülnek tárolásra.</p>
+        <button className="primary-btn" onClick={()=>setShowConfig(true)}>NAV kapcsolat beállítása</button>
+      </div>
+      {showConfig&&<div className="card nav-config-card">
+        <div className="row between"><div><b>NAV technikai felhasználó</b><div className="label">Ezeket ne küldd el chatben — itt add meg.</div></div><button className="ghost-btn" onClick={()=>setShowConfig(false)}>Bezárás</button></div>
+        <div className="form-card" style={{marginTop:12}}>
+          <input className="input" placeholder="Vállalkozás neve" value={form.businessName} onChange={e=>setForm({...form,businessName:e.target.value})}/>
+          <input className="input" inputMode="numeric" placeholder="Adószám első 8 számjegye" value={form.taxNumber} onChange={e=>setForm({...form,taxNumber:e.target.value})}/>
+          <input className="input" autoCapitalize="none" placeholder="Technikai felhasználó login" value={form.login} onChange={e=>setForm({...form,login:e.target.value})}/>
+          <input className="input" type="password" placeholder="Technikai felhasználó jelszó" value={form.password} onChange={e=>setForm({...form,password:e.target.value})}/>
+          <input className="input" type="password" placeholder="Aláírókulcs" value={form.signKey} onChange={e=>setForm({...form,signKey:e.target.value})}/>
+          <button className="primary-btn" onClick={saveConfig}>Titkosítva mentés</button>
+        </div>
+      </div>}
+      {message&&<div className="auth-message">{message}</div>}
+    </div>;
+  }
+
+  return <div className="nav-invoice-center">
+    <div className="nav-syncbar card">
+      <div>
+        <div className="row"><span className={"nav-live-dot "+(data.lastSyncStatus==="error"?"error":"")}/><b>{data.businessName}</b></div>
+        <div className="label">{data.taxNumber} · {data.lastSyncAt?"Utolsó szinkron: "+new Date(data.lastSyncAt).toLocaleString("hu-HU"):"Még nem volt szinkron"}</div>
+      </div>
+      <button className="primary-btn compact" disabled={syncing} onClick={sync}>{syncing?"Szinkron…":"↻ NAV frissítés"}</button>
+    </div>
+
+    {message&&<div className="auth-message">{message}</div>}
+    {data.lastError&&<div className="security-v2-message">Legutóbbi NAV hiba: {data.lastError}</div>}
+
+    <div className="chips nav-year-chips">
+      {[currentYear,currentYear-1,currentYear-2].map(y=><button key={y} className={"chip "+(year===y?"on":"")} onClick={()=>setYear(y)}>{y}</button>)}
+    </div>
+
+    <div className="grid nav-kpi-grid">
+      <div className="card active"><div className="label">Kiállított számlák</div><div className="metric">{summary?.issued_count||0} db</div><div className="delta">CREATE művelet</div></div>
+      <div className="card"><div className="label">Kiszámlázott bruttó</div><div className="metric">{money(summary?.issued_gross_huf)}</div><div className="delta">{year}. év</div></div>
+      <div className="card"><div className="label">Átlagos számla</div><div className="metric">{money(summary?.average_gross_huf)}</div><div className="delta">{summary?.customer_count||0} vevő</div></div>
+      <div className="card"><div className="label">Módosítás / stornó</div><div className="metric">{(summary?.modify_count||0)+(summary?.storno_count||0)} db</div><div className="delta down">{summary?.modify_count||0} mód. · {summary?.storno_count||0} stornó</div></div>
+    </div>
+
+    {monthly.length>0&&<><div className="section-title">Havi számlázás</div><div className="card nav-month-chart">
+      {monthly.map(m=><div className="nav-month-col" key={m.month}>
+        <div className="nav-month-value">{money(m.gross_huf).replace(" Ft","")}</div>
+        <div className="nav-month-bar"><i style={{height:Math.max(8,Math.round(Number(m.gross_huf||0)/maxMonth*100))+"%"}}/></div>
+        <small>{m.month.slice(5)}.</small>
+      </div>)}
+    </div></>}
+
+    <div className="section-title">Kiállított számlák</div>
+    <div className="nav-toolbar">
+      <div className="nav-search"><span>⌕</span><input value={q} onChange={e=>setQ(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")void load(q);}} placeholder="Számlaszám vagy vevő…"/><button onClick={()=>load(q)}>Keresés</button></div>
+      <div className="chips">
+        {(["ALL","CREATE","MODIFY","STORNO"] as const).map(value=><button key={value} className={"chip "+(op===value?"on":"")} onClick={()=>setOp(value)}>{value==="ALL"?"Mind":prettyOperation(value)}</button>)}
+      </div>
+    </div>
+
+    {invoices.length===0?<div className="empty-card"><div className="empty-icon">▥</div><b>Nincs számla ebben az időszakban</b><div className="label">Nyomd meg a NAV frissítést, vagy válassz másik évet.</div></div>:
+    <div className="nav-invoice-list">
+      {invoices.map(inv=><button className={"nav-invoice-row "+(selected?.id===inv.id?"selected":"")} key={inv.id} onClick={()=>setSelected(selected?.id===inv.id?null:inv)}>
+        <div className="nav-invoice-main">
+          <div className="row"><b>{inv.invoice_number||"Számla"}</b><span className={"nav-op "+(inv.invoice_operation||"").toLowerCase()}>{prettyOperation(inv.invoice_operation)}</span></div>
+          <div className="nav-customer">{inv.partner_name||"Magánszemély / nincs név"}</div>
+          <div className="label">{new Date(inv.issue_date).toLocaleDateString("hu-HU")} · {prettyMethod(inv.payment_method)}</div>
+        </div>
+        <div className="nav-invoice-amount"><b>{money(inv.gross_amount_huf)}</b><span>{inv.currency||"HUF"}</span></div>
+      </button>)}
+    </div>}
+
+    {selected&&<div className="card nav-detail">
+      <div className="row between"><div><div className="label">NAV számlakivonat</div><h2>{selected.invoice_number}</h2></div><span className={"nav-op "+(selected.invoice_operation||"").toLowerCase()}>{prettyOperation(selected.invoice_operation)}</span></div>
+      <div className="nav-detail-grid">
+        <div><span>Vevő</span><b>{selected.partner_name||"Nincs név"}</b></div>
+        <div><span>Vevő adószáma</span><b>{selected.customer_tax_number||"—"}</b></div>
+        <div><span>Kiállítás</span><b>{new Date(selected.issue_date).toLocaleDateString("hu-HU")}</b></div>
+        <div><span>Teljesítés</span><b>{selected.invoice_delivery?new Date(selected.invoice_delivery).toLocaleDateString("hu-HU"):"—"}</b></div>
+        <div><span>Nettó</span><b>{money(selected.net_amount_huf)}</b></div>
+        <div><span>ÁFA</span><b>{money(selected.vat_amount_huf)}</b></div>
+        <div><span>Bruttó</span><b>{money(selected.gross_amount_huf)}</b></div>
+        <div><span>Fizetési mód</span><b>{prettyMethod(selected.payment_method)}</b></div>
+        <div><span>Megjelenés</span><b>{selected.invoice_appearance||"—"}</b></div>
+        <div><span>Forrás</span><b>{selected.nav_source||"NAV"}</b></div>
+      </div>
+    </div>}
+
+    {navMode&&<div className="card nav-next-module">
+      <div className="row"><Icon tone="amber">N</Icon><div><b>NAV adószámla és bevallási határidők</b><div className="label">Ez külön NAV-adatforrás. Nem mutatunk hozzá kitalált 0 Ft-os értékeket; a következő NAV fejlesztési egységben kötjük be.</div></div></div>
+    </div>}
+  </div>;
+}
+
 function Business() {
  return <div className="page"><Header title="Vállalkozás"/>
-  <div className="tabs"><button className="tab on">Számlák</button><button className="tab">Bevétel</button><button className="tab">Kiadás</button><button className="tab">Partnerek</button></div>
-  <div className="section-title">2026 Q3 · július–szeptember</div>
-  <div className="grid hero-grid">
-    <MetricCard icon="#" label="Számlák száma" value="8 db" delta="Negyedév"/>
-    <MetricCard icon="Ft" label="Összesített érték" value="292 500 Ft" delta="Kiszámlázva"/>
-    <MetricCard icon="≈" label="Átlagos számla" value="36 563 Ft" delta="8 tételből"/>
-    <MetricCard icon="↑" label="Legnagyobb számla" value="84 000 Ft" delta="Kifizetve"/>
-  </div>
-  <div className="section-title">Számlák</div><div className="card"><table className="table"><tbody>
-   {[["2026.09.14.","Partner A","84 000 Ft"],["2026.09.03.","Partner B","42 000 Ft"],["2026.08.21.","Partner C","38 000 Ft"],["2026.08.12.","Partner D","26 500 Ft"]].map(r=><tr key={r[0]+r[1]}><td><b>{r[1]}</b><div className="label">{r[0]}</div></td><td>{r[2]}<div className="success" style={{fontSize:11}}>● Kifizetve</div></td></tr>)}
-  </tbody></table><button className="primary-btn" style={{width:"100%",marginTop:14}} onClick={()=>window.print()}>Nyomtatás / PDF</button></div>
+  <div className="tabs"><button className="tab on">NAV számlák</button><button className="tab">Bevétel</button><button className="tab">Partnerek</button><button className="tab">Riport</button></div>
+  <IssuedInvoiceCenter/>
  </div>
 }
 function NavPage(){
  return <div className="page"><Header title="NAV"/>
-  <div className="notice" style={{borderColor:"rgba(34,197,94,.3)",background:"rgba(34,197,94,.07)"}}><div className="row"><Icon tone="green">✓</Icon><div><b>Nincs lejárt tartozásod</b><div className="label">Következő határidő: 2026.11.12.</div></div></div></div>
-  <div className="section-title">Adószámla egyenleg</div><div className="card"><table className="table"><tbody>
-    {["Összesen","ÁFA","SZJA","TB / Járulék","Gépjárműadó","Egyéb"].map(x=><tr key={x}><td>{x}</td><td>0 Ft ›</td></tr>)}
-  </tbody></table></div>
-  <div className="section-title">Következő esedékes tételek</div><div className="list">
-    <div className="list-item"><Icon tone="amber">▣</Icon><div className="grow"><b>Gépjárműadó</b><div className="label">2026.11.12.</div></div><b className="amberText">28 000 Ft</b></div>
-    <div className="list-item"><Icon>▥</Icon><div className="grow"><b>Negyedéves bevallás</b><div className="label">2026 Q3 · részletes adatok</div></div><span className="chev">›</span></div>
-    <div className="list-item"><Icon>◷</Icon><div className="grow"><b>SZJA előleg</b><div className="label">2027.01.12.</div></div><span className="chev">›</span></div>
-  </div>
+  <div className="tabs"><button className="tab on">Számlák</button><button className="tab">Adószámla</button><button className="tab">Határidők</button><button className="tab">Bevallások</button></div>
+  <IssuedInvoiceCenter navMode/>
  </div>
 }
 function Vault(){
