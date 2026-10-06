@@ -83,7 +83,8 @@ export async function GET(request:Request){
 export async function POST(request:Request){
   try{
     const user=await requireUser();
-    const body=await request.json() as {action:"register"|"authenticate";response:any;scope?:UnlockScope};\n    const scope:UnlockScope=body.scope==="vault"?"vault":"app";
+    const body=await request.json() as {action:"register"|"authenticate";response:any;scope?:UnlockScope};
+    const scope:UnlockScope=body.scope==="vault"?"vault":"app";
     const db=sql();
     const {rpID,origin}=rp(request);
     const purpose=body.action==="register"?"register":"authenticate";
