@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { createVault, saveVault, unlockVault, vaultExists, type VaultEntry } from "@/lib/vault";
+import { createVault, getLocalVaultPayload, saveVault, setLocalVaultPayload, unlockVault, vaultExists, type StoredVault, type VaultEntry } from "@/lib/vault";
 import SecureGate from "@/components/SecureGate";
 
 type Screen = "home" | "docs" | "finance" | "tasks" | "more" | "business" | "nav" | "vault" | "cards" | "vehicles" | "reports";
@@ -363,6 +363,9 @@ function NavPage(){
 }
 function Vault(){
  const [exists,setExists]=useState(false);
+ const [cloudReady,setCloudReady]=useState(false);
+ const [cloudPayload,setCloudPayload]=useState<StoredVault|null>(null);
+ const [syncState,setSyncState]=useState<"idle"|"syncing"|"synced"|"offline">("idle");
  const [unlocked,setUnlocked]=useState(false);
  const [master,setMaster]=useState("");
  const [key,setKey]=useState<CryptoKey|null>(null);
@@ -372,34 +375,128 @@ function Vault(){
  const [error,setError]=useState("");
  const [draft,setDraft]=useState({title:"",category:"Weboldal",url:"",username:"",password:"",pin:""});
 
- useEffect(()=>setExists(vaultExists()),[]);
+ async function syncPayload(payload:StoredVault){
+  setSyncState("syncing");
+  try{
+   const res=await fetch("/api/vault",{
+    method:"PUT",
+    headers:{"content-type":"application/json"},
+    body:JSON.stringify({payload})
+   });
+   if(!res.ok) throw new Error();
+   setCloudPayload(payload);
+   setSyncState("synced");
+  }catch{
+   setSyncState("offline");
+  }
+ }
+
+ useEffect(()=>{
+  let active=true;
+  (async()=>{
+   const local=getLocalVaultPayload();
+   setExists(Boolean(local));
+   try{
+    const res=await fetch("/api/vault",{cache:"no-store"});
+    const data=await res.json();
+    if(!active) return;
+    if(res.ok&&data.exists&&data.payload){
+     const payload=data.payload as StoredVault;
+     setCloudPayload(payload);
+     setLocalVaultPayload(payload);
+     setExists(true);
+     setSyncState("synced");
+    }else if(local){
+     await syncPayload(local);
+    }
+   }catch{
+    if(active&&local) setSyncState("offline");
+   }finally{
+    if(active) setCloudReady(true);
+   }
+  })();
+  return()=>{active=false;};
+ },[]);
+
  const selected=entries.find(x=>x.id===selectedId)??entries[0];
 
  async function open(create:boolean){
   try{
    setError("");
-   const result=create?await createVault(master):await unlockVault(master);
+   if(create){
+    const result=await createVault(master);
+    await syncPayload(result.payload);
+    setKey(result.key);setEntries(result.entries);setUnlocked(true);setExists(true);setMaster("");
+    return;
+   }
+   const source=cloudPayload??getLocalVaultPayload();
+   const result=await unlockVault(master,source);
    setKey(result.key);setEntries(result.entries);setUnlocked(true);setExists(true);setMaster("");
   }catch(e){setError(e instanceof Error?e.message:"Nem sikerült.");}
  }
+
  async function add(){
   if(!key||!draft.title.trim()) return;
-  const entry:VaultEntry={id:crypto.randomUUID(),title:draft.title.trim(),category:draft.category as VaultEntry["category"],url:draft.url||undefined,username:draft.username||undefined,password:draft.password||undefined,pin:draft.pin||undefined,updatedAt:new Date().toISOString()};
-  const next=[entry,...entries]; await saveVault(key,next);setEntries(next);setSelectedId(entry.id);setDraft({title:"",category:"Weboldal",url:"",username:"",password:"",pin:""});
+  const entry:VaultEntry={
+   id:crypto.randomUUID(),title:draft.title.trim(),
+   category:draft.category as VaultEntry["category"],
+   url:draft.url||undefined,username:draft.username||undefined,
+   password:draft.password||undefined,pin:draft.pin||undefined,
+   updatedAt:new Date().toISOString()
+  };
+  const next=[entry,...entries];
+  const payload=await saveVault(key,next);
+  setEntries(next);setSelectedId(entry.id);
+  setDraft({title:"",category:"Weboldal",url:"",username:"",password:"",pin:""});
+  await syncPayload(payload);
  }
- function lock(){setKey(null);setEntries([]);setUnlocked(false);setSelectedId(null);setReveal(false);}
+
+ async function removeSelected(){
+  if(!key||!selected) return;
+  if(!window.confirm(`Biztosan törlöd ezt a bejegyzést?\n\n${selected.title}`)) return;
+  const next=entries.filter(x=>x.id!==selected.id);
+  const payload=await saveVault(key,next);
+  setEntries(next);setSelectedId(next[0]?.id??null);setReveal(false);
+  await syncPayload(payload);
+ }
+
+ function lock(){
+  setKey(null);setEntries([]);setUnlocked(false);setSelectedId(null);setReveal(false);
+ }
+
+ if(!cloudReady) return <div className="page"><Header title="Jelszótár"/><div className="vault-lock card active">
+  <div className="vault-emblem">⌘</div><h2>Vault előkészítése</h2>
+  <p className="subtle">A titkosított felhőpéldány ellenőrzése…</p>
+ </div></div>;
 
  if(!unlocked) return <div className="page"><Header title="Jelszótár"/><div className="vault-lock card active">
-  <div className="vault-emblem">⌘</div><h2>{exists?"Vault feloldása":"Titkosított Vault létrehozása"}</h2>
-  <p className="subtle">{exists?"Add meg a mesterjelszót.":"A mesterjelszót nem tároljuk és jelenleg nincs visszaállítási lehetőség."}</p>
+  <div className="vault-emblem">⌘</div>
+  <div className="row" style={{justifyContent:"center",marginBottom:8}}>
+   <span className={"badge "+(syncState==="synced"?"green":syncState==="offline"?"amber":"")}>
+    {syncState==="synced"?"Titkosítva a felhőben":syncState==="offline"?"Helyi példány":"Fokozottan védett"}
+   </span>
+  </div>
+  <h2>{exists?"Vault feloldása":"Titkosított Vault létrehozása"}</h2>
+  <p className="subtle">{exists
+   ?"A mesterjelszó csak ezen az eszközön fejti vissza a titkosított adatokat."
+   :"A mesterjelszót nem tároljuk. A Neonba kizárólag titkosított adat kerül."}</p>
   <input className="input" type="password" value={master} onChange={e=>setMaster(e.target.value)} placeholder="Mesterjelszó"/>
   {error&&<div className="form-error">{error}</div>}
-  <button className="primary-btn" style={{width:"100%"}} onClick={()=>open(!exists)}>{exists?"Feloldás":"Vault létrehozása"}</button>
-  <div className="security-note">PBKDF2 250 000 iteráció + AES-GCM 256 bites titkosítás.</div>
+  <button className="primary-btn" style={{width:"100%"}} disabled={master.length<8} onClick={()=>open(!exists)}>{exists?"Feloldás":"Vault létrehozása"}</button>
+  <div className="security-note">PBKDF2 250 000 iteráció + AES-GCM 256 bit. A szerver nem kapja meg a mesterjelszót vagy a visszafejtett tartalmat.</div>
  </div></div>;
 
  return <div className="page"><Header title="Jelszótár"/>
-  <div className="row between"><div className="row"><Icon tone="green">✓</Icon><div><b>Vault feloldva</b><div className="label">{entries.length} titkosított bejegyzés</div></div></div><button className="ghost-btn" onClick={lock}>Zárolás</button></div>
+  <div className="row between">
+   <div className="row"><Icon tone="green">✓</Icon><div><b>Vault feloldva</b><div className="label">{entries.length} titkosított bejegyzés</div></div></div>
+   <button className="ghost-btn" onClick={lock}>Zárolás</button>
+  </div>
+  <div className="vault-cloud-status">
+   <span className={"vault-cloud-dot "+syncState}/>
+   <div><b>{syncState==="syncing"?"Titkosított szinkron…":syncState==="synced"?"Felhőszinkron aktív":"Helyi biztonságos mód"}</b>
+   <div className="label">{syncState==="offline"?"A változások helyben titkosítva megmaradnak.":"A szerver csak ciphertextet tárol."}</div></div>
+  </div>
+
   <div className="section-title">Új bejegyzés</div><div className="card form-card">
    <input className="input" placeholder="Név, pl. iCloud" value={draft.title} onChange={e=>setDraft({...draft,title:e.target.value})}/>
    <select className="input" value={draft.category} onChange={e=>setDraft({...draft,category:e.target.value})}>{["Fontos","Bank","Weboldal","Email","Felhő","Kártya PIN","Egyéb"].map(x=><option key={x}>{x}</option>)}</select>
@@ -409,14 +506,23 @@ function Vault(){
    <input className="input" type="password" inputMode="numeric" placeholder="PIN kód" value={draft.pin} onChange={e=>setDraft({...draft,pin:e.target.value})}/>
    <button className="primary-btn" onClick={add}>Titkosítva mentés</button>
   </div>
-  {entries.length>0&&<><div className="section-title">Bejegyzések</div><div className="vault-layout"><div className="list">{entries.map(entry=><button className={"list-item "+(selected?.id===entry.id?"selected-row":"")} key={entry.id} onClick={()=>{setSelectedId(entry.id);setReveal(false);}}><Icon>{entry.category[0]}</Icon><div className="grow" style={{textAlign:"left"}}><b>{entry.title}</b><div className="label">{entry.category}</div></div><span className="chev">›</span></button>)}</div>
-   {selected&&<div className="card vault-detail"><div className="row between"><h2 style={{margin:0}}>{selected.title}</h2><span className="badge green">Titkosítva</span></div>
+
+  {entries.length>0&&<><div className="section-title">Bejegyzések</div><div className="vault-layout">
+   <div className="list">{entries.map(entry=><button className={"list-item "+(selected?.id===entry.id?"selected-row":"")} key={entry.id} onClick={()=>{setSelectedId(entry.id);setReveal(false);}}>
+    <Icon>{entry.category[0]}</Icon><div className="grow" style={{textAlign:"left"}}><b>{entry.title}</b><div className="label">{entry.category}</div></div><span className="chev">›</span>
+   </button>)}</div>
+   {selected&&<div className="card vault-detail">
+    <div className="row between"><h2 style={{margin:0}}>{selected.title}</h2><span className="badge green">Titkosítva</span></div>
     {selected.url&&<div className="vault-field"><span className="label">Weboldal</span><span className="value">{selected.url}</span><button className="copy-btn" onClick={()=>navigator.clipboard.writeText(selected.url!)}>Másol</button></div>}
     {selected.username&&<div className="vault-field"><span className="label">Felhasználó</span><span className="value">{reveal?selected.username:"••••••••"}</span><button className="copy-btn" onClick={()=>navigator.clipboard.writeText(selected.username!)}>Másol</button></div>}
     {selected.password&&<div className="vault-field"><span className="label">Jelszó</span><span className="value">{reveal?selected.password:"••••••••••••"}</span><button className="copy-btn" onClick={()=>navigator.clipboard.writeText(selected.password!)}>Másol</button></div>}
     {selected.pin&&<div className="vault-field"><span className="label">PIN</span><span className="value">{reveal?selected.pin:"••••"}</span><button className="copy-btn" onClick={()=>navigator.clipboard.writeText(selected.pin!)}>Másol</button></div>}
-    <button className="primary-btn" style={{marginTop:14}} onClick={()=>setReveal(v=>!v)}>{reveal?"Elrejtés":"Érzékeny adatok mutatása"}</button>
-   </div>}</div></>}
+    <div className="row" style={{marginTop:14}}>
+     <button className="primary-btn grow" onClick={()=>setReveal(v=>!v)}>{reveal?"Elrejtés":"Érzékeny adatok mutatása"}</button>
+     <button className="ghost-btn danger" onClick={removeSelected}>Törlés</button>
+    </div>
+   </div>}
+  </div></>}
  </div>
 }
 function Cards(){
