@@ -409,6 +409,12 @@ function prettyOperation(value:string|null){
   return map[value||""]||value||"Kiállított";
 }
 
+function invoiceMonth(issueDate:string){
+  const raw=String(issueDate||"");
+  const m=Number(raw.slice(5,7));
+  return Number.isFinite(m)&&m>=1&&m<=12?m:0;
+}
+
 function IssuedInvoiceCenter({navMode=false}:{navMode?:boolean}){
   const currentYear=new Date().getFullYear();
   const [year,setYear]=useState(currentYear);
@@ -483,8 +489,7 @@ function IssuedInvoiceCenter({navMode=false}:{navMode?:boolean}){
   }
 
   function inSelectedPeriod(inv:NavInvoiceRow){
-    const d=new Date(inv.issue_date+"T00:00:00");
-    const m=d.getMonth()+1;
+    const m=invoiceMonth(inv.issue_date);
     if(periodMode==="quarter") return Math.ceil(m/3)===quarter;
     if(periodMode==="months"&&months.length) return months.includes(m);
     return true;
@@ -493,11 +498,11 @@ function IssuedInvoiceCenter({navMode=false}:{navMode?:boolean}){
   const yearInvoices=data?.invoices||[];
   const quarterCounts=[1,2,3,4].map(qr=>({
     quarter:qr,
-    count:yearInvoices.filter(x=>x.invoice_operation==="CREATE"&&Math.ceil((new Date(x.issue_date+"T00:00:00").getMonth()+1)/3)===qr).length
+    count:yearInvoices.filter(x=>x.invoice_operation==="CREATE"&&Math.ceil(invoiceMonth(x.issue_date)/3)===qr).length
   }));
   const monthCounts=Array.from({length:12},(_,i)=>({
     month:i+1,
-    count:yearInvoices.filter(x=>x.invoice_operation==="CREATE"&&(new Date(x.issue_date+"T00:00:00").getMonth()+1)===(i+1)).length
+    count:yearInvoices.filter(x=>x.invoice_operation==="CREATE"&&invoiceMonth(x.issue_date)===(i+1)).length
   }));
 
   useEffect(()=>{
@@ -526,7 +531,7 @@ function IssuedInvoiceCenter({navMode=false}:{navMode?:boolean}){
   const selectedStorno=periodRows.filter(x=>x.invoice_operation==="STORNO").length;
 
   const monthBuckets=Array.from({length:12},(_,i)=>{
-    const rows=createRows.filter(x=>new Date(x.issue_date+"T00:00:00").getMonth()===i);
+    const rows=createRows.filter(x=>invoiceMonth(x.issue_date)===(i+1));
     const gross=rows.reduce((sum,x)=>sum+Number(x.gross_amount_huf||0),0);
     return {month:i+1,count:rows.length,gross,avg:rows.length?gross/rows.length:0};
   });
