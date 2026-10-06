@@ -35,9 +35,9 @@ export async function PUT(request:Request){
     await saveNavIntegration({
       businessName:body.businessName?.trim()||"Egyéni vállalkozás",
       taxNumber:body.taxNumber||"",
-      login:body.login||"",
-      password:body.password||"",
-      signKey:body.signKey||"",
+      login:body.login,
+      password:body.password,
+      signKey:body.signKey,
     });
     return Response.json({ok:true});
   }catch(error){
