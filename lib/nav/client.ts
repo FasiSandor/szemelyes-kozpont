@@ -57,7 +57,7 @@ function upperHash(algorithm:string,value:string){
 
 function requestContext(auth:NavAuth){
   const now=new Date();
-  const timestamp=now.toISOString().replace(/\.\d{3}Z$/,"Z");
+  const timestamp=now.toISOString();
   const sigTimestamp=[
     now.getUTCFullYear(),
     String(now.getUTCMonth()+1).padStart(2,"0"),
@@ -141,9 +141,11 @@ async function post(endpoint:string,body:string){
 
   const general=parsed?.GeneralErrorResponse;
   if(!res.ok||general){
-    const notes=asArray<any>(general?.notifications?.notification);
+    const result=general?.result??{};
+    const notes=asArray<any>(result?.notifications?.notification);
     const validations=asArray<any>(general?.technicalValidationMessages);
     const details=[
+      [result?.errorCode,result?.message].filter(Boolean).join(" · "),
       ...notes.map((n:any)=>[n?.errorCode,n?.message,n?.info].filter(Boolean).join(" · ")),
       ...validations.map((v:any)=>[v?.validationResultCode,v?.validationErrorCode,v?.message].filter(Boolean).join(" · "))
     ].filter(Boolean);
