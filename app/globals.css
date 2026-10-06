@@ -461,3 +461,12 @@ textarea.input{resize:vertical;min-height:62px;padding-top:11px}
   .nav-kpi-grid .metric{font-size:22px}
   .nav-detail-grid{grid-template-columns:1fr}
 }
+
+
+/* NAV editable connection */
+.nav-sync-actions{display:flex;gap:8px;align-items:center}
+.nav-sync-actions .ghost-btn{white-space:nowrap}
+@media(max-width:520px){
+  .nav-sync-actions{width:100%;display:grid;grid-template-columns:1fr}
+  .nav-sync-actions .ghost-btn,.nav-sync-actions .primary-btn.compact{width:100%}
+}
