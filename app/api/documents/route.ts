@@ -37,6 +37,7 @@ export async function GET(){
     if(error instanceof Error&&error.message==="UNAUTHORIZED"){
       return Response.json({error:"Nincs bejelentkezve."},{status:401});
     }
+    if(error instanceof Error&&error.message==="FORBIDDEN"){ return Response.json({error:"Ehhez a művelethez nincs jogosultság."},{status:403}); }
     if(error instanceof Error&&error.message==="STORAGE_NOT_CONFIGURED"){
       return Response.json({error:"A privát tárhely még nincs az apphoz kötve."},{status:503});
     }
@@ -120,6 +121,7 @@ export async function POST(request:Request){
     if(error instanceof Error&&error.message==="UNAUTHORIZED"){
       return Response.json({error:"Nincs bejelentkezve."},{status:401});
     }
+    if(error instanceof Error&&error.message==="FORBIDDEN"){ return Response.json({error:"Ehhez a művelethez nincs jogosultság."},{status:403}); }
     if(error instanceof Error&&error.message==="STORAGE_NOT_CONFIGURED"){
       return Response.json({error:"A privát tárhely még nincs az apphoz kötve."},{status:503});
     }
