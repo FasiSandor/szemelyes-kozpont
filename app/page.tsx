@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { defaultFamily, deleteDocument, listDocuments, loadFamily, saveDocument, saveFamily, type FamilyMember, type LocalDocument } from "@/lib/local-data";
 import { createVault, saveVault, unlockVault, vaultExists, type VaultEntry } from "@/lib/vault";
+import SecureGate from "@/components/SecureGate";
 
 type Screen = "home" | "docs" | "finance" | "tasks" | "more" | "business" | "nav" | "vault" | "cards" | "vehicles" | "reports";
 
@@ -330,9 +331,9 @@ export default function Page(){
  const content=useMemo(()=>{
   switch(screen){
    case "docs":return <Docs/>;case "finance":return <Finance/>;case "tasks":return <Tasks/>;case "more":return <More go={setScreen}/>;
-   case "business":return <Business/>;case "nav":return <NavPage/>;case "vault":return <Vault/>;case "cards":return <Cards/>;
+   case "business":return <Business/>;case "nav":return <NavPage/>;case "vault":return <SecureGate scope="vault"><Vault/></SecureGate>;case "cards":return <Cards/>;
    case "vehicles":return <Vehicles/>;case "reports":return <Reports/>;default:return <Home go={setScreen}/>;
   }
  },[screen]);
- return <main className="app"><div className="shell">{content}</div><BottomNav screen={screen} setScreen={setScreen}/></main>
+ return <SecureGate scope="app"><main className="app"><div className="shell">{content}</div><BottomNav screen={screen} setScreen={setScreen}/></main></SecureGate>
 }
