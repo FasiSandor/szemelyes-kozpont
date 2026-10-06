@@ -394,3 +394,20 @@ textarea.input{resize:vertical;min-height:62px;padding-top:11px}
   .doc-date-grid{grid-template-columns:1fr}
   .doc-upload-grid{grid-template-columns:1fr 1fr}
 }
+
+
+/* ---------- VAULT CLOUD SYNC ---------- */
+.vault-cloud-status{
+  margin-top:14px;padding:12px 13px;border-radius:14px;border:1px solid rgba(59,130,246,.22);
+  background:linear-gradient(145deg,rgba(15,27,45,.78),rgba(10,18,31,.86));
+  display:flex;align-items:center;gap:10px;
+}
+.vault-cloud-status b{font-size:12px}
+.vault-cloud-dot{
+  width:10px;height:10px;border-radius:50%;background:#64748B;flex:0 0 10px;
+  box-shadow:0 0 0 4px rgba(100,116,139,.08);
+}
+.vault-cloud-dot.synced{background:#22C55E;box-shadow:0 0 0 4px rgba(34,197,94,.08),0 0 12px rgba(34,197,94,.36)}
+.vault-cloud-dot.syncing{background:#22D3EE;box-shadow:0 0 0 4px rgba(34,211,238,.08),0 0 12px rgba(34,211,238,.36);animation:cloudPulse 1s ease-in-out infinite}
+.vault-cloud-dot.offline{background:#F59E0B;box-shadow:0 0 0 4px rgba(245,158,11,.08),0 0 12px rgba(245,158,11,.30)}
+@keyframes cloudPulse{0%,100%{opacity:.45;transform:scale(.9)}50%{opacity:1;transform:scale(1.08)}}
