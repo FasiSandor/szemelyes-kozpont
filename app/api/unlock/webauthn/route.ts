@@ -16,13 +16,13 @@ function rp(request:Request){
     origin:process.env.WEBAUTHN_ORIGIN||url.origin,
   };
 }
-function toUint8(value:unknown){
-  if(value instanceof Uint8Array) return value;
+function toUint8(value:unknown): Uint8Array<ArrayBuffer> {
+  if(value instanceof Uint8Array) return Uint8Array.from(value);
   if(typeof value==="string"){
-    if(value.startsWith("\\x")) return new Uint8Array(Buffer.from(value.slice(2),"hex"));
-    return new Uint8Array(Buffer.from(value,"base64"));
+    if(value.startsWith("\\x")) return Uint8Array.from(Buffer.from(value.slice(2),"hex"));
+    return Uint8Array.from(Buffer.from(value,"base64"));
   }
-  if(Buffer.isBuffer(value)) return new Uint8Array(value);
+  if(Buffer.isBuffer(value)) return Uint8Array.from(value);
   throw new Error("INVALID_PUBLIC_KEY");
 }
 export async function GET(request:Request){
