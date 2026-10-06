@@ -1,6 +1,9 @@
 "use client";
 
-import Image from "next/image";\nimport { useEffect, useMemo, useRef, useState } from "react";\nimport { defaultFamily, deleteDocument, listDocuments, loadFamily, saveDocument, saveFamily, type FamilyMember, type LocalDocument } from "@/lib/local-data";\nimport { createVault, saveVault, unlockVault, vaultExists, type VaultEntry } from "@/lib/vault";
+import Image from "next/image";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { defaultFamily, deleteDocument, listDocuments, loadFamily, saveDocument, saveFamily, type FamilyMember, type LocalDocument } from "@/lib/local-data";
+import { createVault, saveVault, unlockVault, vaultExists, type VaultEntry } from "@/lib/vault";
 
 type Screen = "home" | "docs" | "finance" | "tasks" | "more" | "business" | "nav" | "vault" | "cards" | "vehicles" | "reports";
 
