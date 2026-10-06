@@ -48,7 +48,7 @@ export async function GET(request:Request){
         })),
         authenticatorSelection:{
           authenticatorAttachment:"platform",
-          residentKey:"preferred",
+          residentKey:"discouraged",
           userVerification:"required",
         },
       });
