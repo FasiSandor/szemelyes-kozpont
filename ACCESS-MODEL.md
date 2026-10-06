@@ -1,37 +1,47 @@
-# Jogosultsági modell v1
+# Jogosultsági modell v2 — Neon
+
+## Alapelv
+
+A böngésző nem kap közvetlen PostgreSQL-hozzáférést.
+A Next.js/Vercel szerver ellenőrzi a Neon Auth sessiont, majd a szerveroldali adatbázis-kliens hajtja végre a lekérdezést.
 
 ## Szerepek
 
-### Tulajdonos
+### owner
 - teljes családi irattár
 - NAV / vállalkozás
 - pénzügyek
 - járművek
 - értesítési címzettek
 - saját Vault
-- családtagok és jogosultságok kezelése
+- hozzáférések kezelése
 
-### Család
-- családi profilok és iratok olvasása
-- családi iratok feltöltése/módosítása
+### family
+- családi profilok és iratok
 - családi határidők
 - járművek
-- nincs hozzáférés a tulajdonos Vaultjához
-- nincs vállalkozói/NAV írási jogosultság
+- nincs owner Vault-hozzáférés
+- nincs vállalkozói/NAV módosítás
 
-### Könyvelő
-- vállalkozási adatok és számlák
-- NAV / adózási határidők
-- bevallási előkészítő
-- nincs jelszótár-hozzáférés
-- nincs személyes okmányfeltöltési jogosultság
+### accountant
+- vállalkozás
+- számlák
+- NAV / bevallási előkészítő
+- vállalkozási határidők
+- nincs Vault
+- nincs személyes iratokhoz alapértelmezett hozzáférés
 
-A feleség ugyanazzal a saját belépésével egyszerre kaphat családi és könyvelői feladatokat, de az adatbázis-szerep első körben egyetlen legmagasabb szükséges szerep. Ha később finomabb engedélyezés kell, capability-alapú jogosultságokra bontjuk.
+## Feleség hozzáférése
+
+A feleség saját Neon Auth belépést kap.
+A household_memberships táblában a saját Neon Auth user ID-jához rendeljük a szükséges szerepet.
+
+A szerver minden érzékeny kérésnél újra ellenőrzi:
+1. be van-e jelentkezve,
+2. tagja-e az adott családi térnek,
+3. jogosult-e az adott műveletre.
 
 ## Vault
 
-A Vault különleges:
-- a DB/felhő csak AES-GCM ciphertextet tárol;
-- a mesterjelszó és a visszafejtési kulcs nem kerül a szerverre;
-- másik családtag vagy könyvelő RLS-szinten sem olvashatja a ciphertext sort;
-- a frontend feloldás után memóriában tartja a kulcsot, zároláskor eldobja.
+A Vault szerverre csak AES-GCM ciphertextként kerül.
+A mesterjelszó és a visszafejtett titkok nem kerülnek PostgreSQL-be, logba vagy GitHubra.
