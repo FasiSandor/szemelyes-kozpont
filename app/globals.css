@@ -69,3 +69,9 @@ linear-gradient(135deg,rgba(96,165,250,.28),rgba(34,211,238,.12)),#dbeafe}.doc-p
   .print-sheet{display:block;padding:24px}.printable .topbar{margin-bottom:18px}
   .title,.metric,.doc-name,b,h1,h2{color:#111827!important}.label,.subtle{color:#475569!important}
 }
+
+.auth-page{min-height:100dvh;display:grid;place-items:center;padding:24px;background:radial-gradient(circle at 50% 10%,rgba(59,130,246,.16),transparent 35%),var(--bg)}
+.auth-card{width:min(100%,430px);padding:26px;border:1px solid var(--border);border-radius:28px;background:linear-gradient(160deg,rgba(23,32,51,.98),rgba(11,15,20,.98));box-shadow:var(--shadow);text-align:center}
+.auth-card h1{font-size:28px;letter-spacing:-.03em;margin:8px 0}.auth-card .form-card{margin-top:22px;text-align:left}
+.auth-message{padding:10px 12px;border-radius:11px;background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.22);font-size:12px;color:var(--blue-light)}
+.auth-switch{margin-top:18px;border:0;background:transparent;color:var(--blue-light);cursor:pointer;font-weight:650}
