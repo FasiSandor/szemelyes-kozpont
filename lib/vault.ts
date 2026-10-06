@@ -10,7 +10,7 @@ export type VaultEntry = {
   updatedAt: string;
 };
 
-type StoredVault = {
+export type StoredVault = {
   version: 1;
   salt: string;
   iv: string;
@@ -49,6 +49,27 @@ async function deriveKey(password: string, salt: Uint8Array) {
   );
 }
 
+function storeLocal(stored: StoredVault) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(stored));
+}
+
+export function getLocalVaultPayload():StoredVault|null {
+  if(typeof window==="undefined") return null;
+  const raw=localStorage.getItem(STORAGE_KEY);
+  if(!raw) return null;
+  try{
+    const parsed=JSON.parse(raw) as StoredVault;
+    if(parsed?.version!==1||!parsed.salt||!parsed.iv||!parsed.cipher) return null;
+    return parsed;
+  }catch{
+    return null;
+  }
+}
+
+export function setLocalVaultPayload(stored:StoredVault){
+  storeLocal(stored);
+}
+
 async function encryptEntries(key: CryptoKey, entries: VaultEntry[], salt: Uint8Array) {
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const plain = new TextEncoder().encode(JSON.stringify(entries));
@@ -59,25 +80,25 @@ async function encryptEntries(key: CryptoKey, entries: VaultEntry[], salt: Uint8
     iv: bytesToBase64(iv),
     cipher: bytesToBase64(new Uint8Array(encrypted)),
   };
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(stored));
+  storeLocal(stored);
+  return stored;
 }
 
 export function vaultExists() {
-  return typeof window !== "undefined" && localStorage.getItem(STORAGE_KEY) !== null;
+  return getLocalVaultPayload() !== null;
 }
 
 export async function createVault(password: string) {
   if (password.length < 8) throw new Error("A mesterjelszó legalább 8 karakter legyen.");
   const salt = crypto.getRandomValues(new Uint8Array(16));
   const key = await deriveKey(password, salt);
-  await encryptEntries(key, [], salt);
-  return { key, entries: [] as VaultEntry[] };
+  const payload=await encryptEntries(key, [], salt);
+  return { key, entries: [] as VaultEntry[], payload };
 }
 
-export async function unlockVault(password: string) {
-  const raw = localStorage.getItem(STORAGE_KEY);
-  if (!raw) throw new Error("Nincs még létrehozott Vault.");
-  const stored = JSON.parse(raw) as StoredVault;
+export async function unlockVault(password: string, payload?:StoredVault|null) {
+  const stored=payload??getLocalVaultPayload();
+  if (!stored) throw new Error("Nincs még létrehozott Vault.");
   const salt = base64ToBytes(stored.salt);
   const key = await deriveKey(password, salt);
   try {
@@ -87,17 +108,17 @@ export async function unlockVault(password: string) {
       base64ToBytes(stored.cipher),
     );
     const entries = JSON.parse(new TextDecoder().decode(decrypted)) as VaultEntry[];
-    return { key, entries };
+    storeLocal(stored);
+    return { key, entries, payload:stored };
   } catch {
     throw new Error("Hibás mesterjelszó.");
   }
 }
 
 export async function saveVault(key: CryptoKey, entries: VaultEntry[]) {
-  const raw = localStorage.getItem(STORAGE_KEY);
-  if (!raw) throw new Error("A Vault nem található.");
-  const stored = JSON.parse(raw) as StoredVault;
-  await encryptEntries(key, entries, base64ToBytes(stored.salt));
+  const stored=getLocalVaultPayload();
+  if (!stored) throw new Error("A Vault nem található.");
+  return encryptEntries(key, entries, base64ToBytes(stored.salt));
 }
 
 export function destroyVault() {
