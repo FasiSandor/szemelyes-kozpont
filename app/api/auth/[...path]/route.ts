@@ -1,23 +1,21 @@
 import { createServerAuth } from "@/lib/neon/auth-server";
 
-type AuthHandlers = ReturnType<ReturnType<typeof createServerAuth>["handler"]>;
-
-function handlers(): AuthHandlers {
+function handlers() {
   return createServerAuth().handler();
 }
 
-export async function GET(request: Request) {
-  return handlers().GET(request);
+export async function GET(request: Request, context: { params: Promise<{ path: string[] }> }) {
+  return handlers().GET(request, context);
 }
-export async function POST(request: Request) {
-  return handlers().POST(request);
+export async function POST(request: Request, context: { params: Promise<{ path: string[] }> }) {
+  return handlers().POST(request, context);
 }
-export async function PUT(request: Request) {
-  return handlers().PUT(request);
+export async function PUT(request: Request, context: { params: Promise<{ path: string[] }> }) {
+  return handlers().PUT(request, context);
 }
-export async function DELETE(request: Request) {
-  return handlers().DELETE(request);
+export async function DELETE(request: Request, context: { params: Promise<{ path: string[] }> }) {
+  return handlers().DELETE(request, context);
 }
-export async function PATCH(request: Request) {
-  return handlers().PATCH(request);
+export async function PATCH(request: Request, context: { params: Promise<{ path: string[] }> }) {
+  return handlers().PATCH(request, context);
 }
