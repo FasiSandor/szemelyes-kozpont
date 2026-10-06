@@ -511,3 +511,61 @@ textarea.input{resize:vertical;min-height:62px;padding-top:11px}
 .nav-month-picker button{display:flex;align-items:center;justify-content:center;gap:5px}
 .nav-month-picker button small{font-size:8px;color:#64748B}
 .nav-month-picker button.on small{color:#E0F2FE}
+
+
+/* ---------- REVENUE OVERVIEW V3 ---------- */
+.revenue-overview{display:grid;gap:16px;padding:18px}
+.revenue-overview-head .metric{font-size:28px;margin-top:4px}
+.revenue-view-tabs{margin:0}
+.revenue-share-layout{display:grid;grid-template-columns:minmax(190px,260px) 1fr;gap:22px;align-items:center}
+.revenue-donut{width:min(58vw,240px);aspect-ratio:1;border-radius:50%;display:grid;place-items:center;margin:auto;box-shadow:0 0 28px rgba(59,130,246,.16);animation:donutIn .75s cubic-bezier(.2,.8,.2,1)}
+.revenue-donut-hole{width:64%;aspect-ratio:1;border-radius:50%;display:grid;place-items:center;align-content:center;text-align:center;background:linear-gradient(155deg,#111827,#0B0F14);border:1px solid #2A3445;box-shadow:inset 0 0 30px rgba(0,0,0,.28)}
+.revenue-donut-hole b{font-size:17px}.revenue-donut-hole span{font-size:9px;color:#94A3B8;margin-top:3px}
+.revenue-legend{display:grid;gap:9px}
+.revenue-legend-row{display:grid;grid-template-columns:10px 52px 1fr auto;gap:8px;align-items:center;padding:9px 10px;border:1px solid rgba(71,91,122,.45);border-radius:12px;background:rgba(11,15,20,.24)}
+.revenue-legend-row>span:nth-of-type(2){font-size:12px;color:#E2E8F0;text-align:right}.revenue-legend-row small{font-size:9px;color:#94A3B8;white-space:nowrap}
+.revenue-swatch{width:9px;height:9px;border-radius:50%;box-shadow:0 0 9px currentColor}
+.revenue-year-bars{min-height:270px;display:flex;gap:12px;align-items:flex-end;overflow-x:auto;padding:8px 4px 2px}
+.revenue-year-col{flex:1;min-width:70px;height:250px;display:grid;grid-template-rows:24px 1fr 20px 18px;gap:4px;text-align:center;align-items:end}
+.revenue-year-value{font-size:9px;color:#CBD5E1}
+.revenue-year-bar{height:100%;display:flex;align-items:flex-end;justify-content:center;border-bottom:1px solid #243044}
+.revenue-year-bar i{display:block;width:54%;border-radius:10px 10px 4px 4px;box-shadow:0 0 18px rgba(59,130,246,.18);animation:revenueRise .8s cubic-bezier(.2,.8,.2,1)}
+.revenue-year-col small{font-size:9px;color:#7F91AA}
+.revenue-run-wrap{display:grid;gap:8px}
+.revenue-run-svg{width:100%;height:260px;overflow:visible}
+.revenue-grid-line{stroke:#26354B;stroke-width:.45;vector-effect:non-scaling-stroke}
+.revenue-run-line{stroke-linecap:round;stroke-linejoin:round;filter:drop-shadow(0 0 2px rgba(96,165,250,.24));stroke-dasharray:160;stroke-dashoffset:160;animation:drawRevenue 1.1s ease-out forwards}
+.revenue-month-axis{display:grid;grid-template-columns:repeat(12,1fr);gap:2px;color:#7F91AA;font-size:8px;text-align:center}
+.revenue-run-legend{display:flex;flex-wrap:wrap;gap:12px;justify-content:center;margin-top:4px}
+.revenue-run-legend span{display:flex;align-items:center;gap:6px;font-size:10px;color:#CBD5E1}.revenue-run-legend i{width:14px;height:3px;border-radius:99px}
+@keyframes donutIn{from{transform:scale(.82) rotate(-20deg);opacity:.2}to{transform:scale(1) rotate(0);opacity:1}}
+@keyframes revenueRise{from{transform:scaleY(.04);transform-origin:bottom;opacity:.3}to{transform:scaleY(1);transform-origin:bottom;opacity:1}}
+@keyframes drawRevenue{to{stroke-dashoffset:0}}
+
+/* ---------- NAV DEADLINES ---------- */
+.nav-main-tabs{overflow-x:auto;scrollbar-width:none}.nav-main-tabs::-webkit-scrollbar{display:none}
+.nav-main-tabs .tab{white-space:nowrap}
+.nav-deadlines{display:grid;gap:12px;margin-top:14px}
+.deadline-hero h2{margin:4px 0 8px;font-size:28px}
+.deadline-list{display:grid;gap:10px}
+.deadline-row{display:flex;gap:13px;align-items:flex-start;padding:14px}
+.deadline-date{flex:0 0 58px;min-height:58px;border-radius:15px;display:grid;place-items:center;align-content:center;background:linear-gradient(150deg,rgba(59,130,246,.18),rgba(34,211,238,.07));border:1px solid rgba(59,130,246,.35)}
+.deadline-date b{font-size:13px}.deadline-date small{font-size:9px;color:#94A3B8;margin-top:2px}
+.deadline-row .label{margin-top:5px;line-height:1.4}.deadline-row .delta{margin-top:7px}
+.nav-calendar-card{display:grid;grid-template-columns:1fr auto;gap:14px;align-items:center;margin-top:4px}
+.nav-calendar-card .primary-btn{white-space:nowrap;text-decoration:none}
+.deadline-past{display:grid;gap:8px}
+
+/* ---------- GLOBAL SCROLL TOP ---------- */
+.scroll-top-btn{position:fixed;right:max(16px,env(safe-area-inset-right));bottom:calc(88px + env(safe-area-inset-bottom));z-index:75;border:1px solid rgba(96,165,250,.62);background:linear-gradient(160deg,rgba(17,24,39,.96),rgba(8,18,33,.98));color:#93C5FD;border-radius:999px;min-width:46px;height:46px;padding:0 13px;display:flex;align-items:center;justify-content:center;gap:7px;font-weight:800;box-shadow:0 12px 34px rgba(0,0,0,.36),0 0 20px rgba(59,130,246,.16);backdrop-filter:blur(14px);animation:fadeIn .2s ease-out;cursor:pointer}
+.scroll-top-btn span{font-size:10px;color:#DBEAFE}
+.scroll-top-btn:active{transform:scale(.96)}
+
+@media(max-width:700px){
+ .revenue-share-layout{grid-template-columns:1fr}
+ .revenue-legend-row{grid-template-columns:10px 48px 1fr auto}
+ .revenue-run-svg{height:220px}
+ .nav-calendar-card{grid-template-columns:1fr}
+ .nav-calendar-card .primary-btn{width:100%}
+}
+@media(max-width:420px){.scroll-top-btn span{display:none}.scroll-top-btn{width:46px;padding:0}}
