@@ -92,12 +92,11 @@ function baseXml(auth:NavAuth){
     <software>
       <softwareId>SZKZPONT2026APP001</softwareId>
       <softwareName>Szemelyes Kozpont</softwareName>
-      <softwareOperation>LOCAL_SOFTWARE</softwareOperation>
+      <softwareOperation>ONLINE_SERVICE</softwareOperation>
       <softwareMainVersion>1.0</softwareMainVersion>
       <softwareDevName>Szemelyes Kozpont</softwareDevName>
       <softwareDevContact>local@szemelyes-kozpont.vercel.app</softwareDevContact>
       <softwareDevCountryCode>HU</softwareDevCountryCode>
-      <softwareDevTaxNumber>${xml(tax)}</softwareDevTaxNumber>
     </software>`
   };
 }
