@@ -75,3 +75,23 @@ linear-gradient(135deg,rgba(96,165,250,.28),rgba(34,211,238,.12)),#dbeafe}.doc-p
 .auth-card h1{font-size:28px;letter-spacing:-.03em;margin:8px 0}.auth-card .form-card{margin-top:22px;text-align:left}
 .auth-message{padding:10px 12px;border-radius:11px;background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.22);font-size:12px;color:var(--blue-light)}
 .auth-switch{margin-top:18px;border:0;background:transparent;color:var(--blue-light);cursor:pointer;font-weight:650}
+
+.lock-screen{position:fixed;inset:0;z-index:80;display:grid;place-items:center;align-content:center;gap:18px;padding:28px 20px;background:
+radial-gradient(circle at 50% 16%,rgba(59,130,246,.18),transparent 26%),
+radial-gradient(circle at 25% 76%,rgba(34,211,238,.08),transparent 34%),
+linear-gradient(180deg,#07101c 0%,#0b0f14 58%,#080b10 100%);overflow:hidden}
+.lock-aurora{position:absolute;width:320px;height:320px;border-radius:50%;filter:blur(80px);opacity:.18;animation:auroraFloat 8s ease-in-out infinite alternate;pointer-events:none}
+.lock-aurora-a{background:#3B82F6;top:-90px;left:-70px}.lock-aurora-b{background:#22D3EE;right:-100px;bottom:-80px;animation-delay:-3s}
+.lock-orb{position:relative;width:132px;height:132px;border-radius:42px;display:grid;place-items:center;background:linear-gradient(160deg,rgba(30,64,175,.34),rgba(8,145,178,.15));border:1px solid rgba(96,165,250,.34);box-shadow:0 0 0 1px rgba(34,211,238,.08),0 0 42px rgba(59,130,246,.18),inset 0 0 38px rgba(34,211,238,.06);animation:lockPulse 3.6s ease-in-out infinite}
+.lock-orb:before,.lock-orb:after{content:"";position:absolute;inset:-10px;border-radius:50px;border:1px solid rgba(96,165,250,.12);animation:ringPulse 3.2s ease-out infinite}
+.lock-orb:after{inset:-22px;animation-delay:1.15s}.lock-orb.scanning{box-shadow:0 0 0 1px rgba(34,211,238,.32),0 0 54px rgba(34,211,238,.32),inset 0 0 44px rgba(59,130,246,.1)}
+.faceid-glyph{position:relative;width:70px;height:70px}.corner{position:absolute;width:22px;height:22px;border-color:#93c5fd;border-style:solid}
+.corner.tl{left:0;top:0;border-width:3px 0 0 3px;border-radius:10px 0 0 0}.corner.tr{right:0;top:0;border-width:3px 3px 0 0;border-radius:0 10px 0 0}.corner.bl{left:0;bottom:0;border-width:0 0 3px 3px;border-radius:0 0 0 10px}.corner.br{right:0;bottom:0;border-width:0 3px 3px 0;border-radius:0 0 10px 0}
+.eye{position:absolute;top:28px;width:5px;height:5px;border-radius:50%;background:#e0f2fe;box-shadow:0 0 8px rgba(224,242,254,.8)}.eye.e1{left:21px}.eye.e2{right:21px}.mouth{position:absolute;left:23px;right:23px;bottom:19px;height:9px;border-bottom:3px solid #e0f2fe;border-radius:0 0 20px 20px}
+.scan-line{position:absolute;left:18px;right:18px;top:20px;height:2px;background:linear-gradient(90deg,transparent,#67e8f9,transparent);box-shadow:0 0 12px rgba(34,211,238,.8);opacity:0}.scanning .scan-line{opacity:1;animation:faceScan 1.5s ease-in-out infinite}
+.lock-copy{position:relative;text-align:center;max-width:420px}.lock-copy h1{margin:7px 0 8px;font-size:30px;letter-spacing:-.04em}.lock-copy p{margin:0;color:var(--muted);line-height:1.55}
+.lock-message{position:relative;max-width:420px;padding:10px 13px;border-radius:12px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.18);color:#fca5a5;font-size:12px;text-align:center}
+.lock-actions{position:relative;width:min(100%,360px);display:grid;gap:12px}.lock-main-btn{width:100%;min-height:48px}.pin-panel{display:grid;gap:13px;margin-top:4px}
+.pin-dots{display:flex;justify-content:center;gap:12px;margin:4px 0 2px}.pin-dots span{width:12px;height:12px;border-radius:50%;border:1px solid #475569;background:#0b1220;transition:.18s}.pin-dots span.filled{background:#60A5FA;border-color:#60A5FA;box-shadow:0 0 10px rgba(96,165,250,.38)}
+.pin-input{position:absolute;opacity:0;pointer-events:none}.pin-keypad{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}.pin-keypad button{aspect-ratio:1.45;border-radius:16px;border:1px solid var(--border);background:rgba(17,24,39,.76);color:var(--text);font-size:19px;font-weight:720;backdrop-filter:blur(12px);cursor:pointer}.pin-keypad button:active{transform:scale(.97);background:rgba(59,130,246,.18)}
+@keyframes lockPulse{0%,100%{transform:translateY(0) scale(1)}50%{transform:translateY(-3px) scale(1.015)}}@keyframes ringPulse{0%{opacity:.22;transform:scale(.94)}70%,100%{opacity:0;transform:scale(1.09)}}@keyframes auroraFloat{0%{transform:translate3d(-10px,0,0) scale(.94)}100%{transform:translate3d(24px,-12px,0) scale(1.08)}}@keyframes faceScan{0%{transform:translateY(0);opacity:.3}50%{transform:translateY(70px);opacity:1}100%{transform:translateY(0);opacity:.3}}
