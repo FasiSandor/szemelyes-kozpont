@@ -83,6 +83,19 @@ create table businesses (
   created_at timestamptz not null default now()
 );
 
+create table nav_integrations (
+  id uuid primary key default gen_random_uuid(),
+  household_id uuid not null unique references households(id) on delete cascade,
+  business_id uuid not null references businesses(id) on delete cascade,
+  tax_number text not null,
+  credentials_cipher jsonb not null,
+  last_sync_at timestamptz,
+  last_sync_status text,
+  last_error text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 create table invoices (
   id uuid primary key default gen_random_uuid(),
   household_id uuid not null references households(id) on delete cascade,
@@ -98,6 +111,18 @@ create table invoices (
   vat_amount_huf bigint,
   gross_amount_huf bigint not null,
   status invoice_status not null default 'issued',
+  currency text not null default 'HUF',
+  customer_tax_number text,
+  invoice_category text,
+  payment_method text,
+  invoice_appearance text,
+  invoice_operation text,
+  original_invoice_number text,
+  payment_date date,
+  invoice_delivery date,
+  nav_source text,
+  transaction_id text,
+  transaction_index integer,
   raw_payload jsonb,
   created_at timestamptz not null default now(),
   unique (business_id, source, external_id)
@@ -108,6 +133,12 @@ create index invoices_period_idx
 
 create index invoices_status_idx
   on invoices(business_id, status);
+
+create index invoices_customer_idx
+  on invoices(business_id, partner_name);
+
+create index invoices_nav_operation_idx
+  on invoices(business_id, invoice_operation, issue_date desc);
 
 create table deadlines (
   id uuid primary key default gen_random_uuid(),
