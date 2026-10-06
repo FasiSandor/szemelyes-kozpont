@@ -80,6 +80,60 @@ export async function GET(request:Request){
       order by 1
     `;
 
+    const quarterly=await db`
+      select
+        extract(year from issue_date)::int as year,
+        extract(quarter from issue_date)::int as quarter,
+        count(*) filter (where invoice_operation='CREATE')::int as count,
+        coalesce(sum(gross_amount_huf) filter (where invoice_operation='CREATE'),0)::bigint as gross_huf,
+        coalesce(avg(gross_amount_huf) filter (where invoice_operation='CREATE'),0)::numeric as avg_huf
+      from invoices
+      where business_id=${integration.business_id}
+        and issue_date between ${from} and ${to}
+      group by 1,2
+      order by 1,2
+    `;
+
+    const topCustomers=await db`
+      select
+        coalesce(nullif(partner_name,''),'Magánszemély / nincs név') as name,
+        count(*)::int as count,
+        coalesce(sum(gross_amount_huf),0)::bigint as gross_huf
+      from invoices
+      where business_id=${integration.business_id}
+        and issue_date between ${from} and ${to}
+        and invoice_operation='CREATE'
+      group by 1
+      order by gross_huf desc
+      limit 8
+    `;
+
+    const paymentMethods=await db`
+      select
+        coalesce(nullif(payment_method,''),'UNKNOWN') as method,
+        count(*)::int as count,
+        coalesce(sum(gross_amount_huf),0)::bigint as gross_huf
+      from invoices
+      where business_id=${integration.business_id}
+        and issue_date between ${from} and ${to}
+        and invoice_operation='CREATE'
+      group by 1
+      order by gross_huf desc
+    `;
+
+    const allYears=await db`
+      select
+        extract(year from issue_date)::int as year,
+        count(*) filter (where invoice_operation='CREATE')::int as count,
+        coalesce(sum(gross_amount_huf) filter (where invoice_operation='CREATE'),0)::bigint as gross_huf,
+        coalesce(avg(gross_amount_huf) filter (where invoice_operation='CREATE'),0)::numeric as avg_huf,
+        count(distinct nullif(partner_name,'')) filter (where invoice_operation='CREATE')::int as customers
+      from invoices
+      where business_id=${integration.business_id}
+      group by 1
+      order by 1
+    `;
+
     return Response.json({
       configured:true,
       businessName:integration.business_name,
@@ -90,6 +144,10 @@ export async function GET(request:Request){
       from,to,
       summary:summaryRows[0],
       monthly,
+      quarterly,
+      topCustomers,
+      paymentMethods,
+      allYears,
       invoices:rows,
     });
   }catch(error){

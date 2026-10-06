@@ -388,6 +388,10 @@ type NavInvoiceData={
   lastError?:string|null;
   summary?:NavSummary|null;
   monthly?:{month:string;count:number;gross_huf:string|number}[];
+  quarterly?:{year:number;quarter:number;count:number;gross_huf:string|number;avg_huf:string|number}[];
+  topCustomers?:{name:string;count:number;gross_huf:string|number}[];
+  paymentMethods?:{method:string;count:number;gross_huf:string|number}[];
+  allYears?:{year:number;count:number;gross_huf:string|number;avg_huf:string|number;customers:number}[];
   invoices?:NavInvoiceRow[];
 };
 
@@ -416,6 +420,9 @@ function IssuedInvoiceCenter({navMode=false}:{navMode?:boolean}){
   const [selected,setSelected]=useState<NavInvoiceRow|null>(null);
   const [showConfig,setShowConfig]=useState(false);
   const [message,setMessage]=useState("");
+  const [periodMode,setPeriodMode]=useState<"year"|"quarter"|"months">("year");
+  const [quarter,setQuarter]=useState(1);
+  const [months,setMonths]=useState<number[]>([]);
   const [form,setForm]=useState({businessName:"Egyéni vállalkozás",taxNumber:"",login:"",password:"",signKey:""});
 
   async function load(search=q){
@@ -464,10 +471,61 @@ function IssuedInvoiceCenter({navMode=false}:{navMode?:boolean}){
     finally{setSyncing(false);}
   }
 
-  const invoices=(data?.invoices||[]).filter(x=>op==="ALL"||x.invoice_operation===op);
-  const summary=data?.summary;
-  const monthly=data?.monthly||[];
-  const maxMonth=Math.max(1,...monthly.map(x=>Number(x.gross_huf||0)));
+  function inSelectedPeriod(inv:NavInvoiceRow){
+    const d=new Date(inv.issue_date+"T00:00:00");
+    const m=d.getMonth()+1;
+    if(periodMode==="quarter") return Math.ceil(m/3)===quarter;
+    if(periodMode==="months"&&months.length) return months.includes(m);
+    return true;
+  }
+
+  const periodRows=(data?.invoices||[]).filter(inSelectedPeriod);
+  const createRows=periodRows.filter(x=>x.invoice_operation==="CREATE");
+  const invoices=periodRows.filter(x=>op==="ALL"||x.invoice_operation===op);
+  const selectedGross=createRows.reduce((sum,x)=>sum+Number(x.gross_amount_huf||0),0);
+  const selectedAvg=createRows.length?selectedGross/createRows.length:0;
+  const selectedCustomers=new Set(createRows.map(x=>x.partner_name).filter(Boolean)).size;
+  const selectedModify=periodRows.filter(x=>x.invoice_operation==="MODIFY").length;
+  const selectedStorno=periodRows.filter(x=>x.invoice_operation==="STORNO").length;
+
+  const monthBuckets=Array.from({length:12},(_,i)=>{
+    const rows=createRows.filter(x=>new Date(x.issue_date+"T00:00:00").getMonth()===i);
+    const gross=rows.reduce((sum,x)=>sum+Number(x.gross_amount_huf||0),0);
+    return {month:i+1,count:rows.length,gross,avg:rows.length?gross/rows.length:0};
+  });
+  const visibleMonths=monthBuckets.filter(m=>periodMode!=="months"||months.length===0||months.includes(m.month));
+  const maxMonth=Math.max(1,...visibleMonths.map(x=>x.gross));
+  const maxCount=Math.max(1,...visibleMonths.map(x=>x.count));
+  const maxAvg=Math.max(1,...visibleMonths.map(x=>x.avg));
+
+  const customerMap=new Map<string,{count:number;gross:number}>();
+  for(const inv of createRows){
+    const name=inv.partner_name||"Magánszemély / nincs név";
+    const cur=customerMap.get(name)||{count:0,gross:0};
+    cur.count++;cur.gross+=Number(inv.gross_amount_huf||0);customerMap.set(name,cur);
+  }
+  const topCustomers=Array.from(customerMap.entries()).map(([name,v])=>({name,...v})).sort((a,b)=>b.gross-a.gross).slice(0,6);
+  const maxCustomer=Math.max(1,...topCustomers.map(x=>x.gross));
+
+  const paymentMap=new Map<string,{count:number;gross:number}>();
+  for(const inv of createRows){
+    const method=prettyMethod(inv.payment_method);
+    const cur=paymentMap.get(method)||{count:0,gross:0};
+    cur.count++;cur.gross+=Number(inv.gross_amount_huf||0);paymentMap.set(method,cur);
+  }
+  const paymentRows=Array.from(paymentMap.entries()).map(([name,v])=>({name,...v})).sort((a,b)=>b.gross-a.gross);
+  const totalPayment=Math.max(1,paymentRows.reduce((s,x)=>s+x.gross,0));
+
+  const years=data?.allYears||[];
+  const maxYear=Math.max(1,...years.map(x=>Number(x.gross_huf||0)));
+  const monthNames=["Jan","Feb","Már","Ápr","Máj","Jún","Júl","Aug","Szept","Okt","Nov","Dec"];
+  const periodLabel=periodMode==="year"
+    ?`${year}. teljes év`
+    :periodMode==="quarter"
+      ?`${year} Q${quarter}`
+      :months.length
+        ?`${year} · ${months.map(m=>monthNames[m-1]).join(", ")}`
+        :`${year} · válassz hónapokat`;
 
   if(loading&&!data) return <div className="card nav-loading"><div className="security-v2-loader"/><span>NAV számlák betöltése…</span></div>;
 
@@ -524,23 +582,67 @@ function IssuedInvoiceCenter({navMode=false}:{navMode?:boolean}){
     {message&&<div className="auth-message">{message}</div>}
     {data.lastError&&<div className="security-v2-message">Legutóbbi NAV hiba: {data.lastError}</div>}
 
-    <div className="chips nav-year-chips">
-      {[currentYear,currentYear-1,currentYear-2].map(y=><button key={y} className={"chip "+(year===y?"on":"")} onClick={()=>setYear(y)}>{y}</button>)}
+    <div className="nav-period card">
+      <div className="row between"><div><b>Időszak</b><div className="label">{periodLabel}</div></div><span className="badge">Elemzés</span></div>
+      <div className="tabs nav-period-tabs">
+        <button className={"tab "+(periodMode==="year"?"on":"")} onClick={()=>setPeriodMode("year")}>Év</button>
+        <button className={"tab "+(periodMode==="quarter"?"on":"")} onClick={()=>setPeriodMode("quarter")}>Negyedév</button>
+        <button className={"tab "+(periodMode==="months"?"on":"")} onClick={()=>setPeriodMode("months")}>Hónapok</button>
+      </div>
+      <div className="chips nav-year-chips">
+        {[currentYear,currentYear-1,currentYear-2].map(y=><button key={y} className={"chip "+(year===y?"on":"")} onClick={()=>setYear(y)}>{y}</button>)}
+      </div>
+      {periodMode==="quarter"&&<div className="chips nav-quarter-chips">
+        {[1,2,3,4].map(v=><button key={v} className={"chip "+(quarter===v?"on":"")} onClick={()=>setQuarter(v)}>Q{v}</button>)}
+      </div>}
+      {periodMode==="months"&&<div className="nav-month-picker">
+        {monthNames.map((name,i)=>{
+          const value=i+1;const on=months.includes(value);
+          return <button key={name} className={on?"on":""} onClick={()=>setMonths(m=>on?m.filter(x=>x!==value):[...m,value].sort((a,b)=>a-b))}>{name}</button>
+        })}
+      </div>}
     </div>
 
     <div className="grid nav-kpi-grid">
-      <div className="card active"><div className="label">Kiállított számlák</div><div className="metric">{summary?.issued_count||0} db</div><div className="delta">CREATE művelet</div></div>
-      <div className="card"><div className="label">Kiszámlázott bruttó</div><div className="metric">{money(summary?.issued_gross_huf)}</div><div className="delta">{year}. év</div></div>
-      <div className="card"><div className="label">Átlagos számla</div><div className="metric">{money(summary?.average_gross_huf)}</div><div className="delta">{summary?.customer_count||0} vevő</div></div>
-      <div className="card"><div className="label">Módosítás / stornó</div><div className="metric">{(summary?.modify_count||0)+(summary?.storno_count||0)} db</div><div className="delta down">{summary?.modify_count||0} mód. · {summary?.storno_count||0} stornó</div></div>
+      <div className="card active"><div className="label">Kiállított számlák</div><div className="metric">{createRows.length} db</div><div className="delta">{periodLabel}</div></div>
+      <div className="card"><div className="label">Kiszámlázott bruttó</div><div className="metric">{money(selectedGross)}</div><div className="delta">{selectedCustomers} vevő</div></div>
+      <div className="card"><div className="label">Átlagos számla</div><div className="metric">{money(selectedAvg)}</div><div className="delta">{createRows.length?"Valós NAV adatok":"Nincs adat"}</div></div>
+      <div className="card"><div className="label">Módosítás / stornó</div><div className="metric">{selectedModify+selectedStorno} db</div><div className="delta down">{selectedModify} mód. · {selectedStorno} stornó</div></div>
     </div>
 
-    {monthly.length>0&&<><div className="section-title">Havi számlázás</div><div className="card nav-month-chart">
-      {monthly.map(m=><div className="nav-month-col" key={m.month}>
-        <div className="nav-month-value">{money(m.gross_huf).replace(" Ft","")}</div>
-        <div className="nav-month-bar"><i style={{height:Math.max(8,Math.round(Number(m.gross_huf||0)/maxMonth*100))+"%"}}/></div>
-        <small>{m.month.slice(5)}.</small>
+    {years.length>0&&<><div className="section-title">Évek összehasonlítása</div><div className="card analytics-year-chart">
+      {years.map(y=><div className="analytics-year-row" key={y.year}>
+        <div className="row between"><b>{y.year}</b><span>{money(y.gross_huf)} · {y.count} db</span></div>
+        <div className="analytics-track"><i style={{width:Math.max(3,Math.round(Number(y.gross_huf||0)/maxYear*100))+"%"}}/></div>
       </div>)}
+    </div></>}
+
+    <div className="section-title">Havi bevétel</div>
+    <div className="card nav-month-chart analytics-animated">
+      {visibleMonths.map(m=><div className="nav-month-col" key={m.month}>
+        <div className="nav-month-value">{m.gross?money(m.gross).replace(" Ft",""):"0"}</div>
+        <div className="nav-month-bar"><i style={{height:Math.max(m.gross?8:2,Math.round(m.gross/maxMonth*100))+"%"}}/></div>
+        <small>{monthNames[m.month-1]}</small>
+      </div>)}
+    </div>
+
+    <div className="analytics-two">
+      <div><div className="section-title">Számladarabszám</div><div className="card analytics-spark-bars">
+        {visibleMonths.map(m=><div key={m.month}><i style={{height:Math.max(m.count?10:2,Math.round(m.count/maxCount*100))+"%"}}/><small>{monthNames[m.month-1]}</small><b>{m.count}</b></div>)}
+      </div></div>
+      <div><div className="section-title">Átlagos számla</div><div className="card analytics-spark-bars avg">
+        {visibleMonths.map(m=><div key={m.month}><i style={{height:Math.max(m.avg?10:2,Math.round(m.avg/maxAvg*100))+"%"}}/><small>{monthNames[m.month-1]}</small><b>{m.avg?Math.round(m.avg/1000)+"k":"0"}</b></div>)}
+      </div></div>
+    </div>
+
+    {topCustomers.length>0&&<><div className="section-title">Top vevők</div><div className="card analytics-rank">
+      {topCustomers.map((c,i)=><div className="analytics-rank-row" key={c.name}>
+        <span>{i+1}</span><div className="grow"><div className="row between"><b>{c.name}</b><small>{money(c.gross)} · {c.count} db</small></div><div className="analytics-track"><i style={{width:Math.max(4,Math.round(c.gross/maxCustomer*100))+"%"}}/></div></div>
+      </div>)}
+    </div></>}
+
+    {paymentRows.length>0&&<><div className="section-title">Fizetési módok</div><div className="card payment-analytics">
+      {paymentRows.map(p=><div className="payment-row" key={p.name}><div className="row between"><b>{p.name}</b><span>{Math.round(p.gross/totalPayment*100)}% · {money(p.gross)}</span></div><div className="analytics-track cyan"><i style={{width:Math.max(3,Math.round(p.gross/totalPayment*100))+"%"}}/></div></div>)}
     </div></>}
 
     <div className="section-title">Kiállított számlák</div>
@@ -551,36 +653,40 @@ function IssuedInvoiceCenter({navMode=false}:{navMode?:boolean}){
       </div>
     </div>
 
-    {invoices.length===0?<div className="empty-card"><div className="empty-icon">▥</div><b>Nincs számla ebben az időszakban</b><div className="label">Nyomd meg a NAV frissítést, vagy válassz másik évet.</div></div>:
+    {invoices.length===0?<div className="empty-card"><div className="empty-icon">▥</div><b>Nincs számla ebben az időszakban</b><div className="label">Válassz másik évet, negyedévet vagy hónapokat.</div></div>:
     <div className="nav-invoice-list">
-      {invoices.map(inv=><button className={"nav-invoice-row "+(selected?.id===inv.id?"selected":"")} key={inv.id} onClick={()=>setSelected(selected?.id===inv.id?null:inv)}>
+      {invoices.map(inv=><button className={"nav-invoice-row "+(selected?.id===inv.id?"selected":"")} key={inv.id} onClick={()=>setSelected(inv)}>
         <div className="nav-invoice-main">
           <div className="row"><b>{inv.invoice_number||"Számla"}</b><span className={"nav-op "+(inv.invoice_operation||"").toLowerCase()}>{prettyOperation(inv.invoice_operation)}</span></div>
           <div className="nav-customer">{inv.partner_name||"Magánszemély / nincs név"}</div>
           <div className="label">{new Date(inv.issue_date).toLocaleDateString("hu-HU")} · {prettyMethod(inv.payment_method)}</div>
         </div>
-        <div className="nav-invoice-amount"><b>{money(inv.gross_amount_huf)}</b><span>{inv.currency||"HUF"}</span></div>
+        <div className="nav-invoice-amount"><b>{money(inv.gross_amount_huf)}</b><span>{inv.currency||"HUF"} · Részletek ›</span></div>
       </button>)}
     </div>}
 
-    {selected&&<div className="card nav-detail">
-      <div className="row between"><div><div className="label">NAV számlakivonat</div><h2>{selected.invoice_number}</h2></div><span className={"nav-op "+(selected.invoice_operation||"").toLowerCase()}>{prettyOperation(selected.invoice_operation)}</span></div>
-      <div className="nav-detail-grid">
-        <div><span>Vevő</span><b>{selected.partner_name||"Nincs név"}</b></div>
-        <div><span>Vevő adószáma</span><b>{selected.customer_tax_number||"—"}</b></div>
-        <div><span>Kiállítás</span><b>{new Date(selected.issue_date).toLocaleDateString("hu-HU")}</b></div>
-        <div><span>Teljesítés</span><b>{selected.invoice_delivery?new Date(selected.invoice_delivery).toLocaleDateString("hu-HU"):"—"}</b></div>
-        <div><span>Nettó</span><b>{money(selected.net_amount_huf)}</b></div>
-        <div><span>ÁFA</span><b>{money(selected.vat_amount_huf)}</b></div>
-        <div><span>Bruttó</span><b>{money(selected.gross_amount_huf)}</b></div>
-        <div><span>Fizetési mód</span><b>{prettyMethod(selected.payment_method)}</b></div>
-        <div><span>Megjelenés</span><b>{selected.invoice_appearance||"—"}</b></div>
-        <div><span>Forrás</span><b>{selected.nav_source||"NAV"}</b></div>
+    {selected&&<div className="invoice-sheet-backdrop" onClick={()=>setSelected(null)}>
+      <div className="invoice-sheet" onClick={e=>e.stopPropagation()}>
+        <div className="invoice-sheet-handle"/>
+        <div className="row between"><div><div className="label">NAV számlakivonat</div><h2>{selected.invoice_number}</h2></div><button className="ghost-btn" onClick={()=>setSelected(null)}>Bezárás</button></div>
+        <div className="row" style={{marginTop:8}}><span className={"nav-op "+(selected.invoice_operation||"").toLowerCase()}>{prettyOperation(selected.invoice_operation)}</span><span className="badge">{selected.currency||"HUF"}</span></div>
+        <div className="nav-detail-grid">
+          <div><span>Vevő</span><b>{selected.partner_name||"Nincs név"}</b></div>
+          <div><span>Vevő adószáma</span><b>{selected.customer_tax_number||"—"}</b></div>
+          <div><span>Kiállítás</span><b>{new Date(selected.issue_date).toLocaleDateString("hu-HU")}</b></div>
+          <div><span>Teljesítés</span><b>{selected.invoice_delivery?new Date(selected.invoice_delivery).toLocaleDateString("hu-HU"):"—"}</b></div>
+          <div><span>Nettó</span><b>{money(selected.net_amount_huf)}</b></div>
+          <div><span>ÁFA</span><b>{money(selected.vat_amount_huf)}</b></div>
+          <div><span>Bruttó</span><b>{money(selected.gross_amount_huf)}</b></div>
+          <div><span>Fizetési mód</span><b>{prettyMethod(selected.payment_method)}</b></div>
+          <div><span>Megjelenés</span><b>{selected.invoice_appearance||"—"}</b></div>
+          <div><span>Forrás</span><b>{selected.nav_source||"NAV"}</b></div>
+        </div>
       </div>
     </div>}
 
     {navMode&&<div className="card nav-next-module">
-      <div className="row"><Icon tone="amber">N</Icon><div><b>NAV adószámla és bevallási határidők</b><div className="label">Ez külön NAV-adatforrás. Nem mutatunk hozzá kitalált 0 Ft-os értékeket; a következő NAV fejlesztési egységben kötjük be.</div></div></div>
+      <div className="row"><Icon tone="amber">N</Icon><div><b>Adószámla, határidők és bevallások</b><div className="label">Külön NAV-adatforrás. A következő modulban UPO-kivonat importtal és valós határidőkezeléssel készül el.</div></div></div>
     </div>}
   </div>;
 }
@@ -593,7 +699,7 @@ function Business() {
 }
 function NavPage(){
  return <div className="page"><Header title="NAV"/>
-  <div className="tabs"><button className="tab on">Számlák</button><button className="tab">Adószámla</button><button className="tab">Határidők</button><button className="tab">Bevallások</button></div>
+  <div className="tabs"><button className="tab on">Számlák</button><button className="tab" title="Következő modul">Adószámla · hamarosan</button><button className="tab" title="Következő modul">Határidők</button><button className="tab" title="Következő modul">Bevallások</button></div>
   <IssuedInvoiceCenter navMode/>
  </div>
 }
