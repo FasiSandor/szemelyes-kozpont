@@ -393,6 +393,7 @@ type NavInvoiceData={
   topCustomers?:{name:string;count:number;gross_huf:string|number}[];
   paymentMethods?:{method:string;count:number;gross_huf:string|number}[];
   allYears?:{year:number;count:number;gross_huf:string|number;avg_huf:string|number;customers:number}[];
+  allMonthly?:{year:number;month:number;count:number;gross_huf:string|number}[];
   invoices?:NavInvoiceRow[];
 };
 
@@ -428,6 +429,7 @@ function IssuedInvoiceCenter({navMode=false}:{navMode?:boolean}){
   const [showConfig,setShowConfig]=useState(false);
   const [message,setMessage]=useState("");
   const [periodMode,setPeriodMode]=useState<"year"|"quarter"|"months">("year");
+  const [overviewMode,setOverviewMode]=useState<"share"|"years"|"run">("share");
   const [quarter,setQuarter]=useState(Math.floor(new Date().getMonth()/3)+1);
   const [months,setMonths]=useState<number[]>([]);
   const [form,setForm]=useState({businessName:"Egyéni vállalkozás",taxNumber:"",login:"",password:"",signKey:""});
@@ -559,8 +561,29 @@ function IssuedInvoiceCenter({navMode=false}:{navMode?:boolean}){
   const paymentRows=Array.from(paymentMap.entries()).map(([name,v])=>({name,...v})).sort((a,b)=>b.gross-a.gross);
   const totalPayment=Math.max(1,paymentRows.reduce((s,x)=>s+x.gross,0));
 
-  const years=data?.allYears||[];
+  const years=(data?.allYears||[]).slice().sort((a,b)=>a.year-b.year);
+  const availableYears=years.slice().sort((a,b)=>b.year-a.year).map(x=>x.year);
+  const allMonthly=data?.allMonthly||[];
   const maxYear=Math.max(1,...years.map(x=>Number(x.gross_huf||0)));
+  const totalAllRevenue=years.reduce((sum,x)=>sum+Number(x.gross_huf||0),0);
+  const totalAllInvoices=years.reduce((sum,x)=>sum+Number(x.count||0),0);
+  const yearColors=["#3B82F6","#22D3EE","#22C55E","#F59E0B","#EF4444","#8B5CF6"];
+  let shareCursor=0;
+  const shareStops=years.map((y,i)=>{
+    const share=totalAllRevenue?Number(y.gross_huf||0)/totalAllRevenue*100:0;
+    const start=shareCursor;shareCursor+=share;
+    return `${yearColors[i%yearColors.length]} ${start}% ${shareCursor}%`;
+  }).join(", ");
+  const runSeries=years.map((y,i)=>{
+    let cumulative=0;
+    const values=Array.from({length:12},(_,m)=>{
+      const row=allMonthly.find(x=>Number(x.year)===Number(y.year)&&Number(x.month)===m+1);
+      cumulative+=Number(row?.gross_huf||0);
+      return cumulative;
+    });
+    return {year:Number(y.year),color:yearColors[i%yearColors.length],values};
+  });
+  const maxRun=Math.max(1,...runSeries.flatMap(x=>x.values));
   const monthNames=["Jan","Feb","Már","Ápr","Máj","Jún","Júl","Aug","Szept","Okt","Nov","Dec"];
   const periodLabel=periodMode==="year"
     ?`${year}. teljes év`
@@ -569,6 +592,11 @@ function IssuedInvoiceCenter({navMode=false}:{navMode?:boolean}){
       :months.length
         ?`${year} · ${months.map(m=>monthNames[m-1]).join(", ")}`
         :`${year} · válassz hónapokat`;
+
+  useEffect(()=>{
+    if(!data?.configured||!availableYears.length) return;
+    if(!availableYears.includes(year)) setYear(availableYears[0]);
+  },[data?.allYears]);
 
   if(loading&&!data) return <div className="card nav-loading"><div className="security-v2-loader"/><span>NAV számlák betöltése…</span></div>;
 
@@ -633,7 +661,7 @@ function IssuedInvoiceCenter({navMode=false}:{navMode?:boolean}){
         <button className={"tab "+(periodMode==="months"?"on":"")} onClick={()=>setPeriodMode("months")}>Hónapok</button>
       </div>
       <div className="chips nav-year-chips">
-        {[currentYear,currentYear-1,currentYear-2].map(y=><button key={y} className={"chip "+(year===y?"on":"")} onClick={()=>setYear(y)}>{y}</button>)}
+        {(availableYears.length?availableYears:[currentYear]).map(y=><button key={y} className={"chip "+(year===y?"on":"")} onClick={()=>setYear(y)}>{y}</button>)}
       </div>
       {periodMode==="quarter"&&<div className="chips nav-quarter-chips">
         {quarterCounts.map(({quarter:v,count})=><button key={v} className={"chip "+(quarter===v?"on":"")} onClick={()=>setQuarter(v)}>Q{v} <small>{count}</small></button>)}
@@ -654,30 +682,50 @@ function IssuedInvoiceCenter({navMode=false}:{navMode?:boolean}){
       <div className="card"><div className="label">Módosítás / stornó</div><div className="metric">{selectedModify+selectedStorno} db</div><div className="delta down">{selectedModify} mód. · {selectedStorno} stornó</div></div>
     </div>
 
-    {years.length>0&&<><div className="section-title">Évek összehasonlítása</div><div className="card analytics-year-chart">
-      {years.map(y=><div className="analytics-year-row" key={y.year}>
-        <div className="row between"><b>{y.year}</b><span>{money(y.gross_huf)} · {y.count} db</span></div>
-        <div className="analytics-track"><i style={{width:Math.max(3,Math.round(Number(y.gross_huf||0)/maxYear*100))+"%"}}/></div>
-      </div>)}
+    {years.length>0&&<><div className="section-title">Bevételi áttekintés</div><div className="card revenue-overview">
+      <div className="row between revenue-overview-head">
+        <div><div className="label">Összes eddigi kiszámlázott bevétel</div><div className="metric">{money(totalAllRevenue)}</div><div className="delta">{totalAllInvoices} számla · {years[0]?.year}–{years.at(-1)?.year}</div></div>
+        <span className="badge">NAV</span>
+      </div>
+      <div className="tabs revenue-view-tabs">
+        <button className={"tab "+(overviewMode==="share"?"on":"")} onClick={()=>setOverviewMode("share")}>Megoszlás</button>
+        <button className={"tab "+(overviewMode==="years"?"on":"")} onClick={()=>setOverviewMode("years")}>Évek</button>
+        <button className={"tab "+(overviewMode==="run"?"on":"")} onClick={()=>setOverviewMode("run")}>Lefutás</button>
+      </div>
+
+      {overviewMode==="share"&&<div className="revenue-share-layout">
+        <div className="revenue-donut" style={{background:`conic-gradient(${shareStops||"#243044 0 100%"})`}}>
+          <div className="revenue-donut-hole"><b>{money(totalAllRevenue)}</b><span>összesen</span></div>
+        </div>
+        <div className="revenue-legend">{years.map((y,i)=>{
+          const pct=totalAllRevenue?Math.round(Number(y.gross_huf||0)/totalAllRevenue*100):0;
+          return <div className="revenue-legend-row" key={y.year}>
+            <span className="revenue-swatch" style={{background:yearColors[i%yearColors.length]}}/>
+            <b>{y.year}</b><span>{money(y.gross_huf)}</span><small>{pct}% · {y.count} db</small>
+          </div>
+        })}</div>
+      </div>}
+
+      {overviewMode==="years"&&<div className="revenue-year-bars">
+        {years.map((y,i)=><div className="revenue-year-col" key={y.year}>
+          <div className="revenue-year-value">{money(y.gross_huf).replace(" Ft","")}</div>
+          <div className="revenue-year-bar"><i style={{height:Math.max(7,Math.round(Number(y.gross_huf||0)/maxYear*100))+"%",background:yearColors[i%yearColors.length]}}/></div>
+          <b>{y.year}</b><small>{y.count} számla</small>
+        </div>)}
+      </div>}
+
+      {overviewMode==="run"&&<div className="revenue-run-wrap">
+        <svg className="revenue-run-svg" viewBox="0 0 100 64" preserveAspectRatio="none">
+          {[0,16,32,48,64].map(y=><line key={y} x1="0" x2="100" y1={y} y2={y} className="revenue-grid-line"/>)}
+          {runSeries.map(series=>{
+            const points=series.values.map((v,i)=>`${(i/11)*100},${64-(v/maxRun)*58}`).join(" ");
+            return <polyline key={series.year} points={points} fill="none" stroke={series.color} strokeWidth="2.1" vectorEffect="non-scaling-stroke" className="revenue-run-line"/>;
+          })}
+        </svg>
+        <div className="revenue-month-axis">{monthNames.map(m=><span key={m}>{m}</span>)}</div>
+        <div className="revenue-run-legend">{runSeries.map(s=><span key={s.year}><i style={{background:s.color}}/>{s.year}</span>)}</div>
+      </div>}
     </div></>}
-
-    <div className="section-title">Havi bevétel</div>
-    <div className="card nav-month-chart analytics-animated">
-      {visibleMonths.map(m=><div className="nav-month-col" key={m.month}>
-        <div className="nav-month-value">{m.gross?money(m.gross).replace(" Ft",""):"0"}</div>
-        <div className="nav-month-bar"><i style={{height:Math.max(m.gross?8:2,Math.round(m.gross/maxMonth*100))+"%"}}/></div>
-        <small>{monthNames[m.month-1]}</small>
-      </div>)}
-    </div>
-
-    <div className="analytics-two">
-      <div><div className="section-title">Számladarabszám</div><div className="card analytics-spark-bars">
-        {visibleMonths.map(m=><div key={m.month}><i style={{height:Math.max(m.count?10:2,Math.round(m.count/maxCount*100))+"%"}}/><small>{monthNames[m.month-1]}</small><b>{m.count}</b></div>)}
-      </div></div>
-      <div><div className="section-title">Átlagos számla</div><div className="card analytics-spark-bars avg">
-        {visibleMonths.map(m=><div key={m.month}><i style={{height:Math.max(m.avg?10:2,Math.round(m.avg/maxAvg*100))+"%"}}/><small>{monthNames[m.month-1]}</small><b>{m.avg?Math.round(m.avg/1000)+"k":"0"}</b></div>)}
-      </div></div>
-    </div>
 
     {topCustomers.length>0&&<><div className="section-title">Top vevők</div><div className="card analytics-rank">
       {topCustomers.map((c,i)=><div className="analytics-rank-row" key={c.name}>
@@ -741,10 +789,51 @@ function Business() {
   <IssuedInvoiceCenter/>
  </div>
 }
+type NavDeadline={id:string;date:string;title:string;detail:string;category:string;source:string;status:"past"|"today"|"upcoming"};
+function NavDeadlines(){
+ const [items,setItems]=useState<NavDeadline[]>([]);
+ const [live,setLive]=useState(false);
+ const [loading,setLoading]=useState(true);
+ useEffect(()=>{
+  let active=true;
+  fetch("/api/nav/deadlines",{cache:"no-store"}).then(r=>r.json()).then(data=>{
+   if(!active)return;setItems(data.deadlines||[]);setLive(Boolean(data.live));
+  }).catch(()=>{}).finally(()=>{if(active)setLoading(false);});
+  return()=>{active=false;};
+ },[]);
+ const today=new Date().toISOString().slice(0,10);
+ const upcoming=items.filter(x=>x.date>=today);
+ const past=items.filter(x=>x.date<today).slice(-3).reverse();
+ const days=(date:string)=>Math.ceil((new Date(date+"T00:00:00").getTime()-new Date(today+"T00:00:00").getTime())/86400000);
+ return <div className="nav-deadlines">
+  <div className="card active deadline-hero">
+   <div className="row between"><div><div className="label">NAV határidők</div><h2>{upcoming[0]?new Date(upcoming[0].date+"T00:00:00").toLocaleDateString("hu-HU"):"Nincs közelgő tétel"}</h2></div><span className={"badge "+(live?"green":"amber")}>{live?"NAV élő forrás":"NAV tartalék lista"}</span></div>
+   {upcoming[0]&&<><b>{upcoming[0].title}</b><div className="delta">{days(upcoming[0].date)===0?"Ma":days(upcoming[0].date)+" nap múlva"} · {upcoming[0].category}</div></>}
+  </div>
+  <div className="section-title">Közelgő</div>
+  {loading?<div className="card nav-loading"><div className="security-v2-loader"/><span>Határidők frissítése…</span></div>:<div className="deadline-list">
+   {upcoming.map(x=><div className="card deadline-row" key={x.id}><div className="deadline-date"><b>{new Date(x.date+"T00:00:00").toLocaleDateString("hu-HU",{month:"short",day:"numeric"})}</b><small>{new Date(x.date+"T00:00:00").getFullYear()}</small></div><div className="grow"><div className="row between"><b>{x.title}</b><span className="badge">{x.source}</span></div><div className="label">{x.detail}</div><div className="delta">{days(x.date)} nap múlva · {x.category}</div></div></div>)}
+  </div>}
+  <div className="card nav-calendar-card">
+   <div><b>Személyes NAV Adónaptár</b><div className="label">A NAV Ügyfélportál a saját adózói profilod alapján mutatja a teljes, személyre szabott kötelezettséglistát.</div></div>
+   <a className="primary-btn compact" href="https://ugyfelportal.nav.gov.hu/" target="_blank" rel="noreferrer">NAV Adónaptár megnyitása ↗</a>
+  </div>
+  {past.length>0&&<><div className="section-title">Legutóbbi határidők</div><div className="deadline-past">{past.map(x=><div className="list-item" key={x.id}><Icon tone="green">✓</Icon><div className="grow"><b>{x.title}</b><div className="label">{new Date(x.date+"T00:00:00").toLocaleDateString("hu-HU")} · {x.category}</div></div></div>)}</div></>}
+ </div>
+}
 function NavPage(){
+ const [tab,setTab]=useState<"invoices"|"account"|"deadlines"|"returns">("invoices");
  return <div className="page"><Header title="NAV"/>
-  <div className="tabs"><button className="tab on">Számlák</button><button className="tab" title="Következő modul">Adószámla · hamarosan</button><button className="tab" title="Következő modul">Határidők</button><button className="tab" title="Következő modul">Bevallások</button></div>
-  <IssuedInvoiceCenter navMode/>
+  <div className="tabs nav-main-tabs">
+   <button className={"tab "+(tab==="invoices"?"on":"")} onClick={()=>setTab("invoices")}>Számlák</button>
+   <button className={"tab "+(tab==="account"?"on":"")} onClick={()=>setTab("account")}>Adószámla</button>
+   <button className={"tab "+(tab==="deadlines"?"on":"")} onClick={()=>setTab("deadlines")}>Határidők</button>
+   <button className={"tab "+(tab==="returns"?"on":"")} onClick={()=>setTab("returns")}>Bevallások</button>
+  </div>
+  {tab==="invoices"&&<IssuedInvoiceCenter navMode/>}
+  {tab==="deadlines"&&<NavDeadlines/>}
+  {tab==="account"&&<div className="card nav-next-module"><div className="row"><Icon tone="amber">N</Icon><div><b>Adószámla</b><div className="label">A személyes adószámla NAV-azonosítást igényel; nem mutatunk kitalált egyenleget. Következő egységben importtal kötjük be.</div></div></div></div>}
+  {tab==="returns"&&<div className="card nav-next-module"><div className="row"><Icon tone="amber">N</Icon><div><b>Bevallások</b><div className="label">A beadott bevallások státusza külön NAV-adatforrás. Ezt a következő egységben kötjük be.</div></div></div></div>}
  </div>
 }
 function Vault(){
@@ -962,6 +1051,17 @@ function Reports(){
   <div className="print-sheet"><h1>Személyes Központ — Riport</h1><p>Nyomtatási sablon. A valódi NAV-, vállalkozási és családi adatok a következő integrációs körben kerülnek ide.</p><table className="table"><tbody><tr><td>Időszak</td><td>2026 Q3</td></tr><tr><td>Állapot</td><td>Előkészítő</td></tr></tbody></table></div>
  </div>
 }
+function ScrollTopButton(){
+ const [show,setShow]=useState(false);
+ useEffect(()=>{
+  const onScroll=()=>setShow(window.scrollY>650);
+  onScroll();window.addEventListener("scroll",onScroll,{passive:true});
+  return()=>window.removeEventListener("scroll",onScroll);
+ },[]);
+ if(!show)return null;
+ return <button className="scroll-top-btn" onClick={()=>window.scrollTo({top:0,behavior:"smooth"})} aria-label="Oldal teteje">↑<span>Oldal teteje</span></button>;
+}
+
 function More({go}:{go:(s:Screen)=>void}){
  const items:[Screen,string,string,string][]=[
   ["business","▥","Vállalkozás","Számlák, bevétel, partnerek"],
@@ -975,6 +1075,7 @@ function More({go}:{go:(s:Screen)=>void}){
 }
 export default function Page(){
  const [screen,setScreen]=useState<Screen>("home");
+ useEffect(()=>{window.scrollTo({top:0,behavior:"auto"});},[screen]);
  const content=useMemo(()=>{
   switch(screen){
    case "docs":return <Docs/>;case "finance":return <Finance/>;case "tasks":return <Tasks/>;case "more":return <More go={setScreen}/>;
@@ -982,5 +1083,5 @@ export default function Page(){
    case "vehicles":return <Vehicles/>;case "reports":return <Reports/>;default:return <Home go={setScreen}/>;
   }
  },[screen]);
- return <SecureGate scope="app"><main className="app"><div className="shell">{content}</div><BottomNav screen={screen} setScreen={setScreen}/></main></SecureGate>
+ return <SecureGate scope="app"><main className="app"><div className="shell">{content}</div><ScrollTopButton/><BottomNav screen={screen} setScreen={setScreen}/></main></SecureGate>
 }

@@ -134,6 +134,18 @@ export async function GET(request:Request){
       order by 1
     `;
 
+    const allMonthly=await db`
+      select
+        extract(year from issue_date)::int as year,
+        extract(month from issue_date)::int as month,
+        count(*) filter (where invoice_operation='CREATE')::int as count,
+        coalesce(sum(gross_amount_huf) filter (where invoice_operation='CREATE'),0)::bigint as gross_huf
+      from invoices
+      where business_id=${integration.business_id}
+      group by 1,2
+      order by 1,2
+    `;
+
     return Response.json({
       configured:true,
       businessName:integration.business_name,
@@ -148,6 +160,7 @@ export async function GET(request:Request){
       topCustomers,
       paymentMethods,
       allYears,
+      allMonthly,
       invoices:rows,
     });
   }catch(error){
