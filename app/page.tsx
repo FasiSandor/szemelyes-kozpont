@@ -421,7 +421,7 @@ function IssuedInvoiceCenter({navMode=false}:{navMode?:boolean}){
   const [showConfig,setShowConfig]=useState(false);
   const [message,setMessage]=useState("");
   const [periodMode,setPeriodMode]=useState<"year"|"quarter"|"months">("year");
-  const [quarter,setQuarter]=useState(1);
+  const [quarter,setQuarter]=useState(Math.floor(new Date().getMonth()/3)+1);
   const [months,setMonths]=useState<number[]>([]);
   const [form,setForm]=useState({businessName:"Egyéni vállalkozás",taxNumber:"",login:"",password:"",signKey:""});
 
@@ -455,17 +455,28 @@ function IssuedInvoiceCenter({navMode=false}:{navMode?:boolean}){
   }
 
   async function sync(){
-    setSyncing(true);setMessage("NAV számlák szinkronizálása…");
+    setSyncing(true);
     try{
-      const today=new Date();
-      const to=year===today.getFullYear()?today.toISOString().slice(0,10):`${year}-12-31`;
-      const res=await fetch("/api/nav/invoices",{
-        method:"POST",headers:{"content-type":"application/json"},
-        body:JSON.stringify({from:`${year}-01-01`,to})
-      });
-      const json=await res.json();
-      if(!res.ok) throw new Error(json.error||"A NAV szinkron nem sikerült.");
-      setMessage(`Szinkron kész: ${json.seen} NAV tétel feldolgozva.`);
+      const known=(data?.allYears||[]).map(x=>Number(x.year)).filter(Number.isFinite);
+      const earliest=known.length?Math.min(...known):Math.max(2021,currentYear-2);
+      const yearsToSync=Array.from({length:currentYear-earliest+1},(_,i)=>earliest+i);
+      let seen=0;
+
+      for(let i=0;i<yearsToSync.length;i++){
+        const y=yearsToSync[i];
+        setMessage(`NAV frissítés: ${y} (${i+1}/${yearsToSync.length})…`);
+        const today=new Date();
+        const to=y===currentYear?today.toISOString().slice(0,10):`${y}-12-31`;
+        const res=await fetch("/api/nav/invoices",{
+          method:"POST",headers:{"content-type":"application/json"},
+          body:JSON.stringify({from:`${y}-01-01`,to})
+        });
+        const json=await res.json();
+        if(!res.ok) throw new Error(json.error||`${y}: a NAV szinkron nem sikerült.`);
+        seen+=Number(json.seen||0);
+      }
+
+      setMessage(`Teljes NAV frissítés kész: ${yearsToSync[0]}–${yearsToSync.at(-1)}, ${seen} tétel feldolgozva.`);
       await load(q);
     }catch(e){setMessage(e instanceof Error?e.message:"NAV szinkron hiba.");}
     finally{setSyncing(false);}
@@ -478,6 +489,30 @@ function IssuedInvoiceCenter({navMode=false}:{navMode?:boolean}){
     if(periodMode==="months"&&months.length) return months.includes(m);
     return true;
   }
+
+  const yearInvoices=data?.invoices||[];
+  const quarterCounts=[1,2,3,4].map(qr=>({
+    quarter:qr,
+    count:yearInvoices.filter(x=>x.invoice_operation==="CREATE"&&Math.ceil((new Date(x.issue_date+"T00:00:00").getMonth()+1)/3)===qr).length
+  }));
+  const monthCounts=Array.from({length:12},(_,i)=>({
+    month:i+1,
+    count:yearInvoices.filter(x=>x.invoice_operation==="CREATE"&&(new Date(x.issue_date+"T00:00:00").getMonth()+1)===(i+1)).length
+  }));
+
+  useEffect(()=>{
+    if(periodMode!=="quarter"||!data?.invoices?.length) return;
+    const current=quarterCounts.find(x=>x.quarter===quarter)?.count||0;
+    if(current>0) return;
+    const latest=[...quarterCounts].reverse().find(x=>x.count>0);
+    if(latest) setQuarter(latest.quarter);
+  },[data?.invoices,periodMode,year]);
+
+  useEffect(()=>{
+    if(periodMode!=="months"||months.length||!data?.invoices?.length) return;
+    const latest=[...monthCounts].reverse().find(x=>x.count>0);
+    if(latest) setMonths([latest.month]);
+  },[data?.invoices,periodMode,year]);
 
   const periodRows=(data?.invoices||[]).filter(inSelectedPeriod);
   const createRows=periodRows.filter(x=>x.invoice_operation==="CREATE");
@@ -560,7 +595,7 @@ function IssuedInvoiceCenter({navMode=false}:{navMode?:boolean}){
       </div>
       <div className="nav-sync-actions">
         <button className="ghost-btn" onClick={()=>setShowConfig(v=>!v)}>Kapcsolat módosítása</button>
-        <button className="primary-btn compact" disabled={syncing} onClick={sync}>{syncing?"Szinkron…":"↻ NAV frissítés"}</button>
+        <button className="primary-btn compact" disabled={syncing} onClick={sync}>{syncing?"Összes év frissítése…":"↻ Teljes NAV frissítés"}</button>
       </div>
     </div>
 
@@ -593,12 +628,13 @@ function IssuedInvoiceCenter({navMode=false}:{navMode?:boolean}){
         {[currentYear,currentYear-1,currentYear-2].map(y=><button key={y} className={"chip "+(year===y?"on":"")} onClick={()=>setYear(y)}>{y}</button>)}
       </div>
       {periodMode==="quarter"&&<div className="chips nav-quarter-chips">
-        {[1,2,3,4].map(v=><button key={v} className={"chip "+(quarter===v?"on":"")} onClick={()=>setQuarter(v)}>Q{v}</button>)}
+        {quarterCounts.map(({quarter:v,count})=><button key={v} className={"chip "+(quarter===v?"on":"")} onClick={()=>setQuarter(v)}>Q{v} <small>{count}</small></button>)}
       </div>}
       {periodMode==="months"&&<div className="nav-month-picker">
         {monthNames.map((name,i)=>{
           const value=i+1;const on=months.includes(value);
-          return <button key={name} className={on?"on":""} onClick={()=>setMonths(m=>on?m.filter(x=>x!==value):[...m,value].sort((a,b)=>a-b))}>{name}</button>
+          const count=monthCounts[i]?.count||0;
+          return <button key={name} className={on?"on":""} onClick={()=>setMonths(m=>on?m.filter(x=>x!==value):[...m,value].sort((a,b)=>a-b))}>{name}<small>{count}</small></button>
         })}
       </div>}
     </div>
