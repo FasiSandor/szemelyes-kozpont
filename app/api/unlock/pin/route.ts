@@ -1,7 +1,7 @@
 import { createHash, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import { cookies } from "next/headers";
 import { requireUser } from "@/lib/neon/session";
-import { sql } from "@/lib/neon/db";
+import { sql } from "@/lib/neon/db";\nimport { issueUnlock, type UnlockScope } from "@/lib/unlock/session";
 
 function pinHash(pin:string,salt:string){
   return scryptSync(pin,salt,64).toString("hex");
@@ -9,20 +9,11 @@ function pinHash(pin:string,salt:string){
 function validPin(pin:string){
   return /^\d{6}$/.test(pin);
 }
-async function issueUnlock(userId:string){
-  const raw=randomBytes(32).toString("base64url");
-  const hash=createHash("sha256").update(raw).digest("hex");
-  const db=sql();
-  await db`delete from app_unlock_sessions where user_id=${userId} or expires_at < now()`;
-  await db`insert into app_unlock_sessions(user_id,token_hash,expires_at) values(${userId},${hash},now()+interval '30 minutes')`;
-  const jar=await cookies();
-  jar.set("app_unlock_token",raw,{httpOnly:true,secure:process.env.NODE_ENV==="production",sameSite:"strict",path:"/",maxAge:1800});
-}
 export async function POST(request:Request){
   try{
     const user=await requireUser();
-    const body=await request.json() as {action?:"set"|"verify";pin?:string};
-    const pin=body.pin??"";
+    const body=await request.json() as {action?:"set"|"verify";pin?:string;scope?:UnlockScope};
+    const pin=body.pin??"";\n    const scope:UnlockScope=body.scope==="vault"?"vault":"app";
     if(!validPin(pin)) return Response.json({error:"A kód pontosan 6 számjegy legyen."},{status:400});
     const db=sql();
 
@@ -39,7 +30,7 @@ export async function POST(request:Request){
           locked_until=null,
           updated_at=now()
       `;
-      await issueUnlock(user.id);
+      await issueUnlock(user.id,scope);
       return Response.json({ok:true});
     }
 
@@ -64,7 +55,7 @@ export async function POST(request:Request){
     }
 
     await db`update app_unlock_pins set failed_attempts=0,locked_until=null,updated_at=now() where user_id=${user.id}`;
-    await issueUnlock(user.id);
+    await issueUnlock(user.id,scope);
     return Response.json({ok:true});
   }catch(error){
     if(error instanceof Error && error.message==="UNAUTHORIZED") return Response.json({error:"Nincs bejelentkezve."},{status:401});
