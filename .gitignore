@@ -1,0 +1,23 @@
+node_modules
+.next
+out
+.vercel
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+.DS_Store
+
+# Never commit personal documents, scans, exports or vault data
+/private-data/
+/documents/
+/scans/
+/exports/
+*.csv
+*.ofx
+*.qif
