@@ -30,15 +30,19 @@ export async function getNavIntegration(){
 
 export async function getNavAuth(){
   const ctx=await getNavIntegration();
-  if(!ctx.integration) throw new Error("NAV_NOT_CONFIGURED");
-  const creds=decryptNavCredentials(ctx.integration.credentials_cipher);
+  const integration=ctx.integration;
+  if(!integration) throw new Error("NAV_NOT_CONFIGURED");
+  const creds=decryptNavCredentials(integration.credentials_cipher);
   return {
-    ...ctx,
+    user:ctx.user,
+    household:ctx.household,
+    role:ctx.role,
+    integration,
     auth:{
       login:creds.login,
       password:creds.password,
       signKey:creds.signKey,
-      taxNumber:ctx.integration.tax_number,
+      taxNumber:integration.tax_number,
     }
   };
 }
