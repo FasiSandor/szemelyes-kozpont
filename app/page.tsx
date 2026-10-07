@@ -271,33 +271,49 @@ async function imageUrlToDataUrl(url:string){
   });
 }
 
-async function createDocumentPdf(
-  pages:{imageUrl:string}[],
-  title:string,
-  isCard:boolean,
-  indices:number[]
-){
+
+type A4PrintItem={imageUrl:string;title:string;label:string;isCard:boolean};
+
+function a4CardPlacement(index:number){
+  const col=index%2,row=Math.floor(index/2)%4;
+  return {x:14+col*96,y:16+row*64,w:85.6,h:53.98};
+}
+
+async function createA4PrintPdf(items:A4PrintItem[],title:string){
+  if(!items.length)return;
   const {jsPDF}=await import("jspdf");
   const pdf=new jsPDF({unit:"mm",format:"a4",orientation:"portrait"});
-  for(let n=0;n<indices.length;n++){
-    if(n>0)pdf.addPage();
-    const data=await imageUrlToDataUrl(pages[indices[n]].imageUrl);
-    const img=new Image();
-    await new Promise<void>((resolve,reject)=>{img.onload=()=>resolve();img.onerror=reject;img.src=data;});
-    const pageW=210,pageH=297;
-    let width:number,height:number;
-    if(isCard){width=85.6;height=53.98;}
-    else{
+  let pageStarted=false;
+  let cardSlot=0;
+  for(let i=0;i<items.length;i++){
+    const item=items[i];
+    if(item.isCard){
+      if(cardSlot>0&&cardSlot%8===0){pdf.addPage();pageStarted=true;}
+      const slot=cardSlot%8;
+      const pos=a4CardPlacement(slot);
+      const data=await imageUrlToDataUrl(item.imageUrl);
+      pdf.addImage(data,"JPEG",pos.x,pos.y,pos.w,pos.h,undefined,"FAST");
+      cardSlot++;
+    }else{
+      if(pageStarted||cardSlot>0){pdf.addPage();cardSlot=0;}
+      const data=await imageUrlToDataUrl(item.imageUrl);
+      const img=new Image();
+      await new Promise<void>((resolve,reject)=>{img.onload=()=>resolve();img.onerror=reject;img.src=data;});
       const ratio=img.naturalWidth/img.naturalHeight;
-      width=180;height=width/ratio;
-      if(height>257){height=257;width=height*ratio;}
+      let w=180,h=w/ratio;if(h>257){h=257;w=h*ratio;}
+      pdf.addImage(data,"JPEG",(210-w)/2,18,w,h,undefined,"FAST");
+      pageStarted=true;
     }
-    const x=(pageW-width)/2,y=(pageH-height)/2;
-    pdf.addImage(data,"JPEG",x,y,width,height,undefined,"FAST");
   }
-  const blob=pdf.output("blob");
+  return pdf.output("blob");
+}
+
+async function shareOrSavePdf(blob:Blob,title:string){
   const file=new File([blob],title.replace(/[^\p{L}\p{N}_-]+/gu,"_")+".pdf",{type:"application/pdf"});
-  if(navigator.share&&navigator.canShare?.({files:[file]})){await navigator.share({files:[file],title});return;}
+  if(navigator.share&&navigator.canShare?.({files:[file]})){
+    await navigator.share({files:[file],title});
+    return;
+  }
   const href=URL.createObjectURL(blob);
   const a=document.createElement("a");a.href=href;a.download=file.name;document.body.appendChild(a);a.click();a.remove();
   setTimeout(()=>URL.revokeObjectURL(href),2000);
