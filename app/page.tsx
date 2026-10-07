@@ -198,8 +198,9 @@ async function cropFileToArea(file:File,area:Area){
 }
 
 function printImagePage(url:string,title:string,isCard:boolean){
-  const w=window.open("","_blank","noopener,noreferrer");
+  const w=window.open("","_blank");
   if(!w)return;
+  try{w.opener=null;}catch{}
   const size=isCard?"width:85.6mm;height:53.98mm;object-fit:contain;":"max-width:190mm;max-height:270mm;object-fit:contain;";
   w.document.write('<!doctype html><html><head><title>'+title+'</title><style>@page{margin:10mm}body{margin:0;display:grid;place-items:center;min-height:100vh;background:#fff}.print-img{'+size+'}</style></head><body><img class="print-img" src="'+url.replace(/"/g,"&quot;")+'"></body></html>');
   w.document.close();
@@ -208,8 +209,9 @@ function printImagePage(url:string,title:string,isCard:boolean){
 }
 
 function printDocumentSet(pages:{imageUrl:string}[],title:string,isCard:boolean){
-  const w=window.open("","_blank","noopener,noreferrer");
+  const w=window.open("","_blank");
   if(!w)return;
+  try{w.opener=null;}catch{}
   const size=isCard?"width:85.6mm;height:53.98mm;object-fit:contain;":"max-width:190mm;max-height:270mm;object-fit:contain;";
   const body=pages.map((p,i)=>'<section class="sheet"><img class="print-img" src="'+p.imageUrl.replace(/"/g,"&quot;")+'"><small>'+(i+1)+'. oldal</small></section>').join("");
   w.document.write('<!doctype html><html><head><title>'+title+'</title><style>@page{margin:10mm}.sheet{break-after:page;min-height:270mm;display:grid;place-items:center;align-content:center;gap:5mm}.sheet:last-child{break-after:auto}.print-img{'+size+'}small{font:11px sans-serif;color:#555}</style></head><body>'+body+'</body></html>');
@@ -271,6 +273,8 @@ function Docs({cardOnly=false}:{cardOnly?:boolean}={}) {
   const frontRef=useRef<HTMLInputElement>(null);
   const backRef=useRef<HTMLInputElement>(null);
   const extraRef=useRef<HTMLInputElement>(null);
+  const cropImageUrl=useMemo(()=>cropTarget?URL.createObjectURL(cropTarget.file):"",[cropTarget]);
+  useEffect(()=>()=>{if(cropImageUrl)URL.revokeObjectURL(cropImageUrl);},[cropImageUrl]);
 
   async function loadHousehold(){
     const res=await fetch("/api/household",{cache:"no-store"});
@@ -519,7 +523,7 @@ function Docs({cardOnly=false}:{cardOnly?:boolean}={}) {
         <div className="row between scanner-head"><div><b>Dokumentum körbevágása</b><div className="label">Igazítsd a négy szélét a kerethez</div></div><button className="ghost-btn" onClick={()=>setCropTarget(null)}>Mégse</button></div>
         <div className={"scanner-stage "+(cardVisualKinds.has(kind)?"card-scan":"paper-scan")}>
           <Cropper
-            image={URL.createObjectURL(cropTarget.file)}
+            image={cropImageUrl}
             crop={cropPos}
             zoom={cropZoom}
             aspect={cardVisualKinds.has(kind)?1.586:1/1.414}
