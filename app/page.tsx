@@ -373,12 +373,13 @@ function Docs({cardOnly=false}:{cardOnly?:boolean}={}) {
   const [dragCorner,setDragCorner]=useState<number|null>(null);
   const [scanAspect,setScanAspect]=useState(3/4);
   const [pageByDoc,setPageByDoc]=useState<Record<string,number>>({});
-  const [printDoc,setPrintDoc]=useState<RemoteDocument|null>(null);
-  const [packageImporting,setPackageImporting]=useState(false);
+  const [printOpen,setPrintOpen]=useState(false);
+  const [printStep,setPrintStep]=useState<"select"|"preview">("select");
+  const [printSelected,setPrintSelected]=useState<Record<string,number[]>>({});
+  const [printBusy,setPrintBusy]=useState(false);
   const frontRef=useRef<HTMLInputElement>(null);
   const backRef=useRef<HTMLInputElement>(null);
   const extraRef=useRef<HTMLInputElement>(null);
-  const packageRef=useRef<HTMLInputElement>(null);
   const cropImageUrl=useMemo(()=>cropTarget?URL.createObjectURL(cropTarget.file):"",[cropTarget]);
   useEffect(()=>()=>{if(cropImageUrl)URL.revokeObjectURL(cropImageUrl);},[cropImageUrl]);
 
@@ -478,67 +479,6 @@ function Docs({cardOnly=false}:{cardOnly?:boolean}={}) {
   }
 
 
-  async function uploadPreparedPage(file:File,pageIndex:number,side:"front"|"back",kindValue:string,titleValue:string,groupId?:string){
-    const prepare=await fetch("/api/documents",{
-      method:"POST",headers:{"content-type":"application/json"},
-      body:JSON.stringify({action:"prepare",familyMemberId:personId,title:titleValue,kind:kindValue,contentType:file.type||"image/jpeg",documentGroupId:groupId,side,pageIndex})
-    });
-    const prep=await prepare.json();
-    if(!prepare.ok)throw new Error(prep.error||"A feltöltés előkészítése nem sikerült.");
-    const upload=await fetch(prep.uploadUrl,{method:"PUT",headers:{"content-type":file.type||"image/jpeg"},body:file});
-    if(!upload.ok)throw new Error("A fotó feltöltése nem sikerült.");
-    const finalize=await fetch("/api/documents",{
-      method:"POST",headers:{"content-type":"application/json"},
-      body:JSON.stringify({
-        action:"finalize",familyMemberId:personId,title:titleValue,kind:kindValue,storageKey:prep.storageKey,
-        documentGroupId:prep.documentGroupId,side,pageIndex,issueDate:null,expiryDate:null,note:null,metadata:{}
-      })
-    });
-    const saved=await finalize.json();
-    if(!finalize.ok)throw new Error(saved.error||"Az irat mentése nem sikerült.");
-    return prep.documentGroupId as string;
-  }
-
-  async function importPreparedPackage(file:File){
-    if(!personId)return;
-    setPackageImporting(true);setMessage("Iratcsomag feldolgozása…");
-    try{
-      const JSZip=(await import("jszip")).default;
-      const zip=await JSZip.loadAsync(file);
-      const defs=[
-        ["identity","Személyazonosító igazolvány","01_szemelyi_elolap.jpg","02_szemelyi_hatulap.jpg"],
-        ["vehicle","Vezetői engedély","03_jogositvany_elolap.jpg","04_jogositvany_hatulap.jpg"],
-        ["student","Diákigazolvány","05_diakigazolvany_elolap.jpg","06_diakigazolvany_hatulap.jpg"],
-        ["address","Lakcímkártya","07_lakcimkartya_elolap.jpg","08_lakcimkartya_hatulap.jpg"],
-        ["tax","Adókártya","09_adokartya.jpg",null],
-        ["health","TAJ kártya","10_taj_kartya.jpg",null],
-        ["membership_card","ELTE Alumni kártya","11_elte_alumni_elolap.jpg","12_elte_alumni_hatulap.jpg"],
-        ["teacher","Pedagógusigazolvány","13_pedagogus_igazolvany_elolap.jpg","14_pedagogus_igazolvany_hatulap.jpg"]
-      ] as const;
-      let done=0;
-      for(const [kindValue,titleValue,frontName,backName] of defs){
-        if(documents.some(d=>d.family_member_id===personId&&d.title===titleValue))continue;
-        const frontEntry=zip.file(frontName);if(!frontEntry)continue;
-        const frontBlob=await frontEntry.async("blob");
-        const front=new File([frontBlob],frontName,{type:"image/jpeg"});
-        let groupId=await uploadPreparedPage(front,1,"front",kindValue,titleValue);
-        if(backName){
-          const backEntry=zip.file(backName);
-          if(backEntry){
-            const backBlob=await backEntry.async("blob");
-            const back=new File([backBlob],backName,{type:"image/jpeg"});
-            groupId=await uploadPreparedPage(back,2,"back",kindValue,titleValue,groupId);
-          }
-        }
-        done++;
-        setMessage("Iratcsomag import: "+done+"/8");
-      }
-      await loadDocuments();
-      setMessage("Az iratcsomag importálva.");
-    }catch(e){setMessage(e instanceof Error?e.message:"Az iratcsomag importja nem sikerült.");}
-    finally{setPackageImporting(false);}
-  }
-
   async function saveDocument(){
     if(!personId||!frontFile||!title.trim()) return;
     setSaving(true);setMessage("");
@@ -621,7 +561,7 @@ function Docs({cardOnly=false}:{cardOnly?:boolean}={}) {
     <div className="row between docs-section-head">
       <div><div className="section-title" style={{margin:0}}>{cardOnly?"Kártyatárca":"Digitális irattartó"}</div><div className="label">{selected?selected.display_name+" · "+(selected.relation||"Családtag"):"Családi tér"}</div></div>
       <div className="row">
-        {!cardOnly&&<><button className="ghost-btn" disabled={!personId||packageImporting} onClick={()=>packageRef.current?.click()}>{packageImporting?"Import…":"⇧ Iratcsomag"}</button><input ref={packageRef} className="sr-only" type="file" accept=".zip,application/zip" onChange={e=>{const file=e.target.files?.[0];if(file)void importPreparedPackage(file);e.currentTarget.value="";}}/></>}
+        <button className="ghost-btn" disabled={!personDocs.length} onClick={()=>{setPrintSelected({});setPrintStep("select");setPrintOpen(true);}}>▤ Nyomtatás</button>
         <button className="primary-btn" disabled={!personId} onClick={()=>setShowForm(true)}>＋ {cardOnly?"Új kártya":"Új irat"}</button>
       </div>
     </div>
@@ -736,7 +676,7 @@ function Docs({cardOnly=false}:{cardOnly?:boolean}={}) {
                 </div>
                 <div className="document-actions">
                   <button className="ghost-btn" onClick={()=>window.open(photo.imageUrl,"_blank")}>Teljes méret</button>
-                  <button className="ghost-btn" onClick={()=>setPrintDoc(doc)}>PDF / Nyomtatás</button>
+                  <button className="ghost-btn" onClick={()=>{setPrintSelected({[doc.id]:(doc.pages||[]).map((_,i)=>i)});setPrintStep("preview");setPrintOpen(true);}}>Nyomtatás</button>
                 </div>
               </div>:null;
             })()}
@@ -754,17 +694,6 @@ function Docs({cardOnly=false}:{cardOnly?:boolean}={}) {
       })}
     </div>}
 
-    {printDoc&&<div className="print-modal-overlay">
-      <div className="card print-modal">
-        <div className="row between"><div><b>PDF / nyomtatás</b><div className="label">{printDoc.title}</div></div><button className="ghost-btn" onClick={()=>setPrintDoc(null)}>Bezárás</button></div>
-        <div className="print-choice-grid">
-          {printDoc.pages?.[0]&&<button onClick={async()=>{await createDocumentPdf(printDoc.pages,printDoc.title,cardVisualKinds.has(printDoc.kind),[0]);setPrintDoc(null);}}>Előlap</button>}
-          {printDoc.pages?.[1]&&<button onClick={async()=>{await createDocumentPdf(printDoc.pages,printDoc.title,cardVisualKinds.has(printDoc.kind),[1]);setPrintDoc(null);}}>Hátlap</button>}
-          {(printDoc.pages?.length||0)>1&&<button onClick={async()=>{await createDocumentPdf(printDoc.pages,printDoc.title,cardVisualKinds.has(printDoc.kind),printDoc.pages.map((_,i)=>i));setPrintDoc(null);}}>Összes oldal</button>}
-        </div>
-        <div className="finance-source-note">Kártyatípusnál a PDF az A4 lap közepére kb. 85,6 × 53,98 mm méretben teszi az iratot. Az iPhone megosztómenüjéből választható a Nyomtatás.</div>
-      </div>
-    </div>}
   </div>
 }
 type FinanceTransaction={
