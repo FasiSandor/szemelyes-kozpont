@@ -5,6 +5,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createVault, getLocalVaultPayload, saveVault, setLocalVaultPayload, unlockVault, vaultExists, type StoredVault, type VaultEntry } from "@/lib/vault";
 import SecureGate from "@/components/SecureGate";
+import QRCode from "react-qr-code";
 
 type Screen = "home" | "docs" | "finance" | "tasks" | "more" | "business" | "nav" | "vault" | "cards" | "vehicles" | "reports";
 
@@ -176,21 +177,24 @@ function Home({go}:{go:(s:Screen)=>void}) {
     </div>
   </div>
 }
-function Docs() {
+function Docs({cardOnly=false}:{cardOnly?:boolean}={}) {
   type RemoteMember={id:string;display_name:string;relation:string|null;linked_user_id:string|null};
-  type DocPhoto={id:string;imageUrl:string;storageKey:string};
+  type DocPhoto={id:string;imageUrl:string;storageKey:string;pageIndex:number;side:string};
+  type DocMeta={issuer?:string;last4?:string;codeValue?:string;codeType?:"qr"|"barcode"};
   type RemoteDocument={
     id:string;family_member_id:string;kind:string;title:string;issue_date:string|null;
     expiry_date:string|null;note:string|null;created_at:string;member_name:string;
-    front:DocPhoto|null;back:DocPhoto|null;
+    front:DocPhoto|null;back:DocPhoto|null;pages:DocPhoto[];metadata:DocMeta;
   };
 
   const kindOptions=[
     ["identity","Személyazonosító igazolvány"],["address","Lakcímkártya"],["tax","Adókártya"],
     ["health","TAJ kártya"],["student","Diákigazolvány"],["teacher","Pedagógusigazolvány"],
     ["vehicle","Jármű okmány"],["insurance","Biztosítás"],["contract","Szerződés"],
-    ["shopping_card","Kártya / tagság"],["other","Egyéb irat"]
+    ["bank_card","Bankkártya"],["loyalty_card","Hűségkártya"],["membership_card","Tagsági kártya"],
+    ["shopping_card","Bevásárlókártya"],["other","Egyéb irat"]
   ] as const;
+  const cardKinds=new Set(["bank_card","loyalty_card","membership_card","shopping_card"]);
 
   const [family,setFamily]=useState<RemoteMember[]>([]);
   const [personId,setPersonId]=useState("");
@@ -199,16 +203,23 @@ function Docs() {
   const [message,setMessage]=useState("");
   const [showForm,setShowForm]=useState(false);
   const [saving,setSaving]=useState(false);
-  const [kind,setKind]=useState("identity");
-  const [title,setTitle]=useState("Személyazonosító igazolvány");
+  const [kind,setKind]=useState(cardOnly?"bank_card":"identity");
+  const [title,setTitle]=useState(cardOnly?"Bankkártya":"Személyazonosító igazolvány");
   const [issueDate,setIssueDate]=useState("");
   const [expiryDate,setExpiryDate]=useState("");
   const [note,setNote]=useState("");
   const [frontFile,setFrontFile]=useState<File|null>(null);
   const [backFile,setBackFile]=useState<File|null>(null);
+  const [extraFiles,setExtraFiles]=useState<File[]>([]);
   const [docFilter,setDocFilter]=useState<"all"|"valid"|"expiring"|"expired">("all");
+  const [openDocId,setOpenDocId]=useState<string|null>(null);
+  const [issuer,setIssuer]=useState("");
+  const [last4,setLast4]=useState("");
+  const [codeValue,setCodeValue]=useState("");
+  const [codeType,setCodeType]=useState<"qr"|"barcode">("qr");
   const frontRef=useRef<HTMLInputElement>(null);
   const backRef=useRef<HTMLInputElement>(null);
+  const extraRef=useRef<HTMLInputElement>(null);
 
   async function loadHousehold(){
     const res=await fetch("/api/household",{cache:"no-store"});
@@ -230,16 +241,17 @@ function Docs() {
     let active=true;
     (async()=>{
       try{await Promise.all([loadHousehold(),loadDocuments()]);}
-      catch(e){if(active) setMessage(e instanceof Error?e.message:"Betöltési hiba.");}
-      finally{if(active) setLoading(false);}
+      catch(e){if(active)setMessage(e instanceof Error?e.message:"Betöltési hiba.");}
+      finally{if(active)setLoading(false);}
     })();
     return()=>{active=false;};
   },[]);
 
   function resetForm(){
-    setKind("identity");setTitle("Személyazonosító igazolvány");
-    setIssueDate("");setExpiryDate("");setNote("");
-    setFrontFile(null);setBackFile(null);setShowForm(false);
+    setKind(cardOnly?"bank_card":"identity");
+    setTitle(cardOnly?"Bankkártya":"Személyazonosító igazolvány");
+    setIssueDate("");setExpiryDate("");setNote("");setIssuer("");setLast4("");setCodeValue("");setCodeType("qr");
+    setFrontFile(null);setBackFile(null);setExtraFiles([]);setShowForm(false);
   }
 
   function changeKind(next:string){
@@ -248,28 +260,30 @@ function Docs() {
     setTitle(label);
   }
 
-  async function uploadSide(file:File,side:"front"|"back",groupId?:string){
+  function metadata(){
+    return {
+      issuer:issuer.trim()||undefined,
+      last4:last4.trim().slice(-4)||undefined,
+      codeValue:codeValue.trim()||undefined,
+      codeType:codeValue.trim()?codeType:undefined
+    };
+  }
+
+  async function uploadPage(file:File,pageIndex:number,side:"front"|"back"|"page",groupId?:string){
     const prepare=await fetch("/api/documents",{
       method:"POST",headers:{"content-type":"application/json"},
-      body:JSON.stringify({
-        action:"prepare",familyMemberId:personId,title,kind,
-        contentType:file.type||"image/jpeg",documentGroupId:groupId,side
-      })
+      body:JSON.stringify({action:"prepare",familyMemberId:personId,title,kind,contentType:file.type||"image/jpeg",documentGroupId:groupId,side,pageIndex})
     });
     const prep=await prepare.json();
     if(!prepare.ok) throw new Error(prep.error||"A feltöltés előkészítése nem sikerült.");
-
-    const upload=await fetch(prep.uploadUrl,{
-      method:"PUT",headers:{"content-type":file.type||"image/jpeg"},body:file
-    });
+    const upload=await fetch(prep.uploadUrl,{method:"PUT",headers:{"content-type":file.type||"image/jpeg"},body:file});
     if(!upload.ok) throw new Error("A fotó feltöltése nem sikerült.");
-
     const finalize=await fetch("/api/documents",{
       method:"POST",headers:{"content-type":"application/json"},
       body:JSON.stringify({
-        action:"finalize",familyMemberId:personId,title,kind,
-        storageKey:prep.storageKey,documentGroupId:prep.documentGroupId,side,
-        issueDate:issueDate||null,expiryDate:expiryDate||null,note:note||null
+        action:"finalize",familyMemberId:personId,title,kind,storageKey:prep.storageKey,
+        documentGroupId:prep.documentGroupId,side,pageIndex,issueDate:issueDate||null,
+        expiryDate:expiryDate||null,note:note||null,metadata:metadata()
       })
     });
     const saved=await finalize.json();
@@ -281,52 +295,47 @@ function Docs() {
     if(!personId||!frontFile||!title.trim()) return;
     setSaving(true);setMessage("");
     try{
-      const groupId=await uploadSide(frontFile,"front");
-      if(backFile) await uploadSide(backFile,"back",groupId);
+      let groupId=await uploadPage(frontFile,1,"front");
+      if(backFile) groupId=await uploadPage(backFile,2,"back",groupId);
+      for(let i=0;i<extraFiles.length;i++) groupId=await uploadPage(extraFiles[i],3+i,"page",groupId);
       await loadDocuments();
       setMessage("Az irat biztonságosan elmentve.");
       resetForm();
-    }catch(e){
-      setMessage(e instanceof Error?e.message:"Nem sikerült menteni az iratot.");
-    }finally{setSaving(false);}
+    }catch(e){setMessage(e instanceof Error?e.message:"Nem sikerült menteni az iratot.");}
+    finally{setSaving(false);}
   }
 
   async function deleteDocument(doc:RemoteDocument){
-    if(!window.confirm(`Biztosan törlöd ezt az iratot?\n\n${doc.title}`)) return;
+    if(!window.confirm("Biztosan törlöd ezt az iratot?\\n\\n"+doc.title)) return;
     setMessage("Törlés…");
     const res=await fetch("/api/documents?groupId="+encodeURIComponent(doc.id),{method:"DELETE"});
     const data=await res.json();
     if(!res.ok){setMessage(data.error||"Nem sikerült törölni.");return;}
-    await loadDocuments();
-    setMessage("Az irat törölve.");
+    await loadDocuments();setOpenDocId(null);setMessage("Az irat törölve.");
   }
 
   async function addFamilyMember(){
-    const displayName=window.prompt("Családtag neve")?.trim();
-    if(!displayName) return;
+    const displayName=window.prompt("Családtag neve")?.trim();if(!displayName)return;
     const relation=window.prompt("Kapcsolat (pl. gyermek, házastárs)")?.trim()||"Családtag";
-    const res=await fetch("/api/household",{
-      method:"POST",headers:{"content-type":"application/json"},
-      body:JSON.stringify({displayName,relation})
-    });
+    const res=await fetch("/api/household",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({displayName,relation})});
     const data=await res.json();
     if(!res.ok){setMessage(data.error||"Nem sikerült hozzáadni.");return;}
-    await loadHousehold();
-    if(data.member?.id) setPersonId(data.member.id);
+    await loadHousehold();if(data.member?.id)setPersonId(data.member.id);
   }
 
   function expiryBadge(doc:RemoteDocument){
     if(!doc.expiry_date) return <span className="badge green">Nincs lejárat</span>;
-    const days=Math.ceil((new Date(doc.expiry_date).getTime()-Date.now())/86400000);
-    if(days<0) return <span className="badge" style={{color:"#fca5a5",borderColor:"rgba(239,68,68,.35)"}}>Lejárt</span>;
+    const today=new Date();today.setHours(0,0,0,0);
+    const days=Math.ceil((new Date(doc.expiry_date+"T00:00:00").getTime()-today.getTime())/86400000);
+    if(days<0) return <span className="badge dangerBadge">Lejárt</span>;
     if(days<=30) return <span className="badge amber">{days} nap</span>;
     return <span className="badge green">Érvényes</span>;
   }
 
   const selected=family.find(x=>x.id===personId)??family[0];
-  const visible=documents.filter(doc=>!personId||doc.family_member_id===personId);
+  const personDocs=documents.filter(doc=>(!personId||doc.family_member_id===personId)&&(!cardOnly||cardKinds.has(doc.kind)));
   const today=new Date();today.setHours(0,0,0,0);
-  const withExpiry=visible.map(doc=>{
+  const withExpiry=personDocs.map(doc=>{
     const days=doc.expiry_date?Math.ceil((new Date(doc.expiry_date+"T00:00:00").getTime()-today.getTime())/86400000):null;
     return {...doc,days};
   });
@@ -340,36 +349,31 @@ function Docs() {
     return true;
   }).sort((a,b)=>{
     if(a.days===null&&b.days===null)return new Date(b.created_at).getTime()-new Date(a.created_at).getTime();
-    if(a.days===null)return 1;if(b.days===null)return -1;
-    return a.days-b.days;
+    if(a.days===null)return 1;if(b.days===null)return -1;return a.days-b.days;
   });
   const kindIcon=(value:string)=>({
-    identity:"▣",address:"⌂",tax:"N",health:"✚",student:"◫",teacher:"◆",
-    vehicle:"🚙",insurance:"✓",contract:"▤",shopping_card:"▥",other:"•"
+    identity:"▣",address:"⌂",tax:"N",health:"✚",student:"◫",teacher:"◆",vehicle:"🚙",
+    insurance:"✓",contract:"▤",bank_card:"▥",loyalty_card:"◇",membership_card:"◎",shopping_card:"▦",other:"•"
   } as Record<string,string>)[value]||"•";
+  const currentIsCard=cardKinds.has(kind);
 
-  return <div className="page docs-v2">
-    <Header title="Család és iratok"/>
+  return <div className="page docs-v3">
+    <Header title={cardOnly?"Kártyák":"Család és iratok"}/>
 
     <div className="profile-strip">
       {family.map((p,i)=><button key={p.id} className={"profile "+(personId===p.id?"selected":"")} onClick={()=>setPersonId(p.id)} style={{border:0,background:"transparent",color:"inherit"}}>
         <div className="picon">{i===0?"●":i===1?"◆":"○"}</div><small>{p.display_name}</small>
       </button>)}
-      <button className="profile" onClick={addFamilyMember} style={{border:0,background:"transparent",color:"inherit"}}>
-        <div className="picon">＋</div><small>Hozzáadás</small>
-      </button>
+      {!cardOnly&&<button className="profile" onClick={addFamilyMember} style={{border:0,background:"transparent",color:"inherit"}}><div className="picon">＋</div><small>Hozzáadás</small></button>}
     </div>
 
     <div className="row between docs-section-head">
-      <div>
-        <div className="section-title" style={{margin:0}}>Okmányok</div>
-        <div className="label">{selected?selected.display_name+" · "+(selected.relation||"Családtag"):"Családi tér"}</div>
-      </div>
-      <button className="primary-btn" disabled={!personId} onClick={()=>setShowForm(true)}>＋ Új irat</button>
+      <div><div className="section-title" style={{margin:0}}>{cardOnly?"Kártyatárca":"Digitális irattartó"}</div><div className="label">{selected?selected.display_name+" · "+(selected.relation||"Családtag"):"Családi tér"}</div></div>
+      <button className="primary-btn" disabled={!personId} onClick={()=>setShowForm(true)}>＋ {cardOnly?"Új kártya":"Új irat"}</button>
     </div>
 
     <div className="docs-summary-grid">
-      <button className={"card docs-summary-card "+(docFilter==="all"?"active":"")} onClick={()=>setDocFilter("all")}><span>Összes irat</span><b>{visible.length}</b><small>{selected?.display_name||"Család"}</small></button>
+      <button className={"card docs-summary-card "+(docFilter==="all"?"active":"")} onClick={()=>setDocFilter("all")}><span>Összes</span><b>{personDocs.length}</b><small>{cardOnly?"kártya":"irat"}</small></button>
       <button className={"card docs-summary-card "+(docFilter==="expiring"?"active amber-card":"")} onClick={()=>setDocFilter("expiring")}><span>30 napon belül</span><b>{expiringCount}</b><small>figyelmet kér</small></button>
       <button className={"card docs-summary-card "+(docFilter==="expired"?"active danger-card":"")} onClick={()=>setDocFilter("expired")}><span>Lejárt</span><b>{expiredCount}</b><small>cserélendő</small></button>
     </div>
@@ -381,65 +385,72 @@ function Docs() {
       <button className={"chip "+(docFilter==="expired"?"on":"")} onClick={()=>setDocFilter("expired")}>Lejárt <small>{expiredCount}</small></button>
     </div>
 
-    <div className="notice docs-private-note">
-      <div className="row"><Icon tone="green">✓</Icon><div>
-        <b>Privát, többeszközös irattár</b>
-        <div className="label">Előlap, hátlap, lejárat és családtag egy helyen. A lejáró iratok a főoldali Közelgő blokkban is megjelennek.</div>
-      </div></div>
-    </div>
-
     {message&&<div className="auth-message" style={{marginTop:12}}>{message}</div>}
 
-    {showForm&&<div className="card doc-editor" style={{marginTop:12}}>
-      <div className="row between"><div><b>Új irat</b><div className="label">{selected?.display_name}</div></div><button className="ghost-btn" onClick={resetForm}>Bezárás</button></div>
+    {showForm&&<div className="card doc-editor folder-editor">
+      <div className="row between"><div><b>{cardOnly?"Új kártya":"Új irat"}</b><div className="label">{selected?.display_name}</div></div><button className="ghost-btn" onClick={resetForm}>Bezárás</button></div>
       <div className="form-card" style={{marginTop:14}}>
-        <label className="label">Irat típusa</label>
+        <label className="label">Típus</label>
         <select className="input" value={kind} onChange={e=>changeKind(e.target.value)}>
-          {kindOptions.map(([value,label])=><option value={value} key={value}>{label}</option>)}
+          {kindOptions.filter(([value])=>cardOnly?cardKinds.has(value):true).map(([value,label])=><option value={value} key={value}>{label}</option>)}
         </select>
-        <input className="input" value={title} onChange={e=>setTitle(e.target.value)} placeholder="Irat neve"/>
+        <input className="input" value={title} onChange={e=>setTitle(e.target.value)} placeholder="Irat / kártya neve"/>
+        {currentIsCard&&<div className="card-meta-grid">
+          <input className="input" value={issuer} onChange={e=>setIssuer(e.target.value)} placeholder="Kibocsátó / üzlet (pl. OTP, Lidl)"/>
+          {kind==="bank_card"&&<input className="input" inputMode="numeric" maxLength={4} value={last4} onChange={e=>setLast4(e.target.value.replace(/\D/g,"").slice(0,4))} placeholder="Utolsó 4 számjegy"/>}
+          {kind!=="bank_card"&&<><input className="input" value={codeValue} onChange={e=>setCodeValue(e.target.value)} placeholder="Kártyaazonosító / QR érték"/>
+          <select className="input" value={codeType} onChange={e=>setCodeType(e.target.value as "qr"|"barcode")}><option value="qr">QR-kód</option><option value="barcode">Vonalkód érték</option></select></>}
+        </div>}
         <div className="doc-date-grid">
           <label><span className="label">Kiállítás</span><input className="input" type="date" value={issueDate} onChange={e=>setIssueDate(e.target.value)}/></label>
           <label><span className="label">Lejárat</span><input className="input" type="date" value={expiryDate} onChange={e=>setExpiryDate(e.target.value)}/></label>
         </div>
         <textarea className="input" rows={2} value={note} onChange={e=>setNote(e.target.value)} placeholder="Megjegyzés (opcionális)"/>
+
         <div className="doc-upload-grid">
-          <button className={"doc-upload "+(frontFile?"ready":"")} onClick={()=>frontRef.current?.click()}>
-            <span className="doc-upload-icon">{frontFile?"✓":"＋"}</span><b>Előlap</b><small>{frontFile?frontFile.name:"Fotó készítése / kiválasztása"}</small>
-          </button>
-          <button className={"doc-upload "+(backFile?"ready":"")} onClick={()=>backRef.current?.click()}>
-            <span className="doc-upload-icon">{backFile?"✓":"＋"}</span><b>Hátlap</b><small>{backFile?backFile.name:"Opcionális"}</small>
-          </button>
+          <button className={"doc-upload "+(frontFile?"ready":"")} onClick={()=>frontRef.current?.click()}><span className="doc-upload-icon">{frontFile?"✓":"＋"}</span><b>{currentIsCard?"Előlap":"1. oldal / előlap"}</b><small>{frontFile?frontFile.name:"Fotó készítése / kiválasztása"}</small></button>
+          <button className={"doc-upload "+(backFile?"ready":"")} onClick={()=>backRef.current?.click()}><span className="doc-upload-icon">{backFile?"✓":"＋"}</span><b>{currentIsCard?"Hátlap":"2. oldal / hátlap"}</b><small>{backFile?backFile.name:"Opcionális"}</small></button>
         </div>
+        {!currentIsCard&&<button className="ghost-btn doc-more-pages" onClick={()=>extraRef.current?.click()}>＋ További oldalak {extraFiles.length?"("+extraFiles.length+")":""}</button>}
+        {extraFiles.length>0&&<div className="doc-file-list">{extraFiles.map((file,i)=><span key={file.name+i}>{i+3}. {file.name}</span>)}</div>}
         <input ref={frontRef} className="sr-only" type="file" accept="image/*" capture="environment" onChange={e=>setFrontFile(e.target.files?.[0]||null)}/>
         <input ref={backRef} className="sr-only" type="file" accept="image/*" capture="environment" onChange={e=>setBackFile(e.target.files?.[0]||null)}/>
-        <button className="primary-btn" disabled={!frontFile||saving} onClick={saveDocument}>{saving?"Mentés…":"Irat mentése"}</button>
+        <input ref={extraRef} className="sr-only" type="file" accept="image/*" multiple onChange={e=>setExtraFiles(Array.from(e.target.files||[]))}/>
+        <button className="primary-btn" disabled={!frontFile||saving} onClick={saveDocument}>{saving?"Mentés…":"Mentés az irattartóba"}</button>
       </div>
     </div>}
 
     {loading?<div className="empty-card"><div className="empty-icon">◷</div><b>Betöltés…</b></div>:
-    visible.length===0?<div className="empty-card">
-      <div className="empty-icon">▤</div><b>Még nincs feltöltött irat</b>
-      <div className="label">Az „Új irat” gombbal előlapot és hátlapot is menthetsz.</div>
-    </div>:
-    filteredDocs.length===0?<div className="empty-card"><div className="empty-icon">⌕</div><b>Nincs ilyen állapotú irat</b><div className="label">Válassz másik szűrőt, vagy adj hozzá új iratot.</div></div>:
-    <div className="grid doc-grid" style={{marginTop:12}}>
-      {filteredDocs.map(doc=><div className="card compact-doc doc-record-card" key={doc.id}>
-        <div className="doc-photo-stack">
-          {doc.front?<button className="photo-wrap" onClick={()=>window.open(doc.front!.imageUrl,"_blank")}><img src={doc.front.imageUrl} alt={doc.title+" előlap"}/><span>Előlap</span></button>:<div className="photo-wrap missing">Nincs előlap</div>}
-          {doc.back&&<button className="photo-wrap back" onClick={()=>window.open(doc.back!.imageUrl,"_blank")}><img src={doc.back.imageUrl} alt={doc.title+" hátlap"}/><span>Hátlap</span></button>}
-        </div>
-        <div className="row between" style={{marginTop:11,alignItems:"flex-start"}}>
-          <div className="row grow doc-title-row"><div className="doc-kind-icon">{kindIcon(doc.kind)}</div><div className="grow"><div className="doc-name">{doc.title}</div><div className="doc-meta">{doc.member_name}</div></div></div>
-          {expiryBadge(doc)}
-        </div>
-        <div className="doc-meta-row">
-          <span>{doc.expiry_date?"Lejár: "+new Date(doc.expiry_date).toLocaleDateString("hu-HU"):"Határozatlan / nincs megadva"}</span>
-          <span>{doc.back?"2 oldal":"1 oldal"}</span>
-        </div>
-        {doc.note&&<div className="doc-note">{doc.note}</div>}
-        <button className="doc-delete" onClick={()=>deleteDocument(doc)}>Irat törlése</button>
-      </div>)}
+    personDocs.length===0?<div className="empty-card"><div className="empty-icon">{cardOnly?"▥":"▤"}</div><b>{cardOnly?"Még nincs mentett kártya":"Még nincs feltöltött irat"}</b><div className="label">A hozzáadás gombbal fotózd le vagy válaszd ki az oldalakat.</div></div>:
+    filteredDocs.length===0?<div className="empty-card"><div className="empty-icon">⌕</div><b>Nincs ilyen állapotú tétel</b><div className="label">Válassz másik szűrőt.</div></div>:
+    <div className="digital-binder">
+      {filteredDocs.map(doc=>{
+        const open=openDocId===doc.id;
+        const isCard=cardKinds.has(doc.kind);
+        return <article className={"binder-item "+(open?"open":"")} key={doc.id}>
+          <button className="binder-tab" onClick={()=>setOpenDocId(open?null:doc.id)}>
+            <div className="doc-kind-icon">{kindIcon(doc.kind)}</div>
+            <div className="grow binder-main"><b>{doc.title}</b><span>{doc.metadata?.issuer||doc.member_name}{doc.metadata?.last4?" · •••• "+doc.metadata.last4:""}</span></div>
+            <div className="binder-status">{expiryBadge(doc)}<span className="binder-chevron">{open?"⌃":"⌄"}</span></div>
+          </button>
+          {open&&<div className="binder-content">
+            <div className="document-pages">
+              {(doc.pages||[]).map((photo,i)=><button className="document-page" key={photo.id} onClick={()=>window.open(photo.imageUrl,"_blank")}>
+                <img src={photo.imageUrl} alt={doc.title+" "+(i+1)+". oldal"}/><span>{isCard?(i===0?"Előlap":i===1?"Hátlap":(i+1)+". oldal"):(i+1)+". oldal"}</span>
+              </button>)}
+            </div>
+            <div className="binder-details">
+              <div><span>Tulajdonos</span><b>{doc.member_name}</b></div>
+              <div><span>Lejárat</span><b>{doc.expiry_date?new Date(doc.expiry_date+"T00:00:00").toLocaleDateString("hu-HU"):"Nincs megadva"}</b></div>
+              <div><span>Oldalak</span><b>{doc.pages?.length||1}</b></div>
+            </div>
+            {doc.metadata?.codeValue&&doc.metadata.codeType==="qr"&&<div className="stored-code-card"><div className="qr-wrap"><QRCode value={doc.metadata.codeValue} size={148} bgColor="#FFFFFF" fgColor="#0B0F14"/></div><div><b>QR-kód</b><span>{doc.metadata.codeValue}</span></div></div>}
+            {doc.metadata?.codeValue&&doc.metadata.codeType==="barcode"&&<div className="stored-code-card barcode-value"><div><b>Vonalkód azonosító</b><span>{doc.metadata.codeValue}</span></div></div>}
+            {doc.note&&<div className="doc-note">{doc.note}</div>}
+            <button className="doc-delete" onClick={()=>deleteDocument(doc)}>Irat törlése</button>
+          </div>}
+        </article>;
+      })}
     </div>}
   </div>
 }
@@ -1363,17 +1374,7 @@ function Vault(){
   </div></>}
  </div>
 }
-function Cards(){
- return <div className="page"><Header title="Kártyák"/>
-   <div className="tabs"><button className="tab on">Bankkártyák</button><button className="tab">Bevásárlókártyák</button><button className="tab">Tagságok</button></div>
-   <div className="card active" style={{marginTop:18,padding:20,background:"linear-gradient(135deg,#0a2750,#0d4fa1 55%,#0b1627)"}}>
-    <div className="row between"><b style={{fontSize:18}}>Bankkártya</b><span className="badge">Debet</span></div>
-    <div style={{fontSize:22,letterSpacing:3,margin:"38px 0 18px"}}>•••• •••• •••• 1234</div>
-    <div className="row between"><span>LEJÁR 06/28</span><b>◉◉</b></div>
-   </div>
-   <div className="card" style={{marginTop:12}}><div className="vault-field"><span className="label">PIN kód</span><span className="value">••••</span><button className="ghost-btn">Mutat</button></div><div className="vault-field"><span className="label">Számla</span><span className="value">Főszámla</span><span>›</span></div></div>
- </div>
-}
+function Cards(){ return <Docs cardOnly/>; }
 function Vehicles(){
  return <div className="page"><Header title="Járművek"/>
   <div className="card active"><div className="row between"><div><div className="label">Saját jármű</div><h2 style={{margin:"5px 0"}}>Ford</h2><div className="subtle">ABC-123</div></div><div style={{fontSize:54}}>🚙</div></div></div>
