@@ -27,16 +27,16 @@ export async function syncEnableBanking(args:{householdId:string;sessionId:strin
     accountIds=(session.accounts||[]).map((a:any)=>a.uid).filter(Boolean);
   }
 
-  const from=new Date(Date.now()-180*86400000).toISOString().slice(0,10);
-  const to=new Date().toISOString().slice(0,10);
   let inserted=0;
+  const errors:string[]=[];
 
   for(const accountId of accountIds){
     let continuation:string|undefined;
-    do{
-      const q=new URLSearchParams({date_from:from,date_to:to,transaction_status:"BOOK"});
-      if(continuation)q.set("continuation_key",continuation);
-      const response=await ebRequest("/accounts/"+encodeURIComponent(accountId)+"/transactions?"+q.toString());
+    try{
+      do{
+        const q=new URLSearchParams({transaction_status:"BOOK"});
+        if(continuation)q.set("continuation_key",continuation);
+        const response=await ebRequest("/accounts/"+encodeURIComponent(accountId)+"/transactions?"+q.toString());
       const txs=Array.isArray(response.transactions)?response.transactions:[];
       for(const tx of txs){
         const currency=String(tx?.transaction_amount?.currency||"").toUpperCase();
@@ -71,17 +71,20 @@ export async function syncEnableBanking(args:{householdId:string;sessionId:strin
         `;
         inserted++;
       }
-      continuation=response.continuation_key||response?.links?.next?.continuation_key||undefined;
-    }while(continuation);
+        continuation=response.continuation_key||response?.links?.next?.continuation_key||undefined;
+      }while(continuation);
+    }catch(error){
+      errors.push(error instanceof Error?error.message:String(error));
+    }
   }
 
   await db`
     update bank_connections
     set account_ids=${JSON.stringify(accountIds)}::jsonb,
         last_sync_at=now(),
-        last_error=null,
+        last_error=${errors.length?errors.join(" | "):null},
         updated_at=now()
     where household_id=${args.householdId} and provider='enablebanking'
   `;
-  return {inserted,accounts:accountIds.length};
+  return {inserted,accounts:accountIds.length,errors};
 }
