@@ -51,6 +51,8 @@ function Home({go}:{go:(s:Screen)=>void}) {
   const [navData,setNavData]=useState<NavInvoiceData|null>(null);
   const [financeData,setFinanceData]=useState<FinanceData|null>(null);
   const [previousFinanceData,setPreviousFinanceData]=useState<FinanceData|null>(null);
+  const [homeFamilyCount,setHomeFamilyCount]=useState(0);
+  const [homeDocuments,setHomeDocuments]=useState<Array<{id:string;title:string;member_name:string;expiry_date:string|null}>>([]);
   useEffect(()=>{
     let active=true;
     const current=new Date();
@@ -59,12 +61,16 @@ function Home({go}:{go:(s:Screen)=>void}) {
     Promise.all([
       fetch("/api/nav/invoices?year="+new Date().getFullYear(),{cache:"no-store"}).then(r=>r.json()),
       fetch("/api/finance/transactions?month="+month,{cache:"no-store"}).then(r=>r.json()),
-      fetch("/api/finance/transactions?month="+prev,{cache:"no-store"}).then(r=>r.json())
-    ]).then(([nav,finance,previous])=>{
+      fetch("/api/finance/transactions?month="+prev,{cache:"no-store"}).then(r=>r.json()),
+      fetch("/api/household",{cache:"no-store"}).then(r=>r.json()),
+      fetch("/api/documents",{cache:"no-store"}).then(r=>r.json())
+    ]).then(([nav,finance,previous,household,docs])=>{
       if(!active)return;
       setNavData(nav);
       setFinanceData(finance);
       setPreviousFinanceData(previous);
+      setHomeFamilyCount((household.members||[]).length);
+      setHomeDocuments(docs.documents||[]);
     }).catch(()=>{});
     return()=>{active=false;};
   },[]);
@@ -83,16 +89,28 @@ function Home({go}:{go:(s:Screen)=>void}) {
   const topCategoryMax=Math.max(1,...topCategories.map(x=>Number(x.amount_huf||0)));
   const expenseDelta=prevExpense?Math.round((homeExpense-prevExpense)/prevExpense*100):null;
   const incomeDelta=prevIncome?Math.round((homeIncome-prevIncome)/prevIncome*100):null;
+  const nowDay=new Date();nowDay.setHours(0,0,0,0);
+  const homeExpiringDocs=homeDocuments
+    .filter(x=>x.expiry_date)
+    .map(x=>({...x,days:Math.ceil((new Date(x.expiry_date!+"T00:00:00").getTime()-nowDay.getTime())/86400000)}))
+    .filter(x=>x.days<=60)
+    .sort((a,b)=>a.days-b.days)
+    .slice(0,5);
 
   return <div className="page home-v2">
     <Header/>
-    <button className="notice home-upcoming" onClick={()=>go("tasks")}>
-      <div className="row between"><div><b>Közelgő</b><div className="subtle" style={{marginTop:4}}>Teendők, lejáratok és határidők</div></div><span className="badge amber">Megnyitás ›</span></div>
+    <div className="notice home-upcoming">
+      <div className="row between"><div><b>Közelgő</b><div className="subtle" style={{marginTop:4}}>Teendők, iratlejáratok és határidők</div></div><span className="badge amber">{homeExpiringDocs.length?homeExpiringDocs.length+" irat figyelmet kér":"Áttekintés"}</span></div>
       <div className="home-upcoming-list">
-        <div className="row"><Icon tone="amber">◷</Icon><div className="grow"><b>Teendők</b><div className="label">A teljes listát itt éred el</div></div></div>
-        <div className="row"><Icon tone="amber">▣</Icon><div className="grow"><b>Lejáratok és NAV-határidők</b><div className="label">Egy helyen, időrendben</div></div></div>
+        {homeExpiringDocs.map(doc=><button className="row home-upcoming-row" key={doc.id} onClick={()=>go("docs")}>
+          <Icon tone={doc.days<0?"red":"amber"}>▣</Icon>
+          <div className="grow"><b>{doc.title}</b><div className="label">{doc.member_name} · {doc.days<0?"lejárt "+Math.abs(doc.days)+" napja":doc.days===0?"ma jár le":doc.days+" nap múlva lejár"}</div></div>
+          <span className="chev">›</span>
+        </button>)}
+        <button className="row home-upcoming-row" onClick={()=>go("tasks")}><Icon tone="amber">◷</Icon><div className="grow"><b>Teendők</b><div className="label">Személyes és családi feladatok</div></div><span className="chev">›</span></button>
+        <button className="row home-upcoming-row" onClick={()=>go("nav")}><Icon tone="amber">N</Icon><div className="grow"><b>NAV és vállalkozási határidők</b><div className="label">Adó, bevallás, gépjármű és egyéb határidők</div></div><span className="chev">›</span></button>
       </div>
-    </button>
+    </div>
 
     <div className="section-title">Áttekintés</div>
     <div className="grid hero-grid home-overview-grid">
@@ -111,8 +129,8 @@ function Home({go}:{go:(s:Screen)=>void}) {
       <button className="card home-overview-card" onClick={()=>go("docs")}>
         <div className="row between"><Icon tone="cyan">♙</Icon><span className="badge">Család</span></div>
         <div className="label">Családi irattár</div>
-        <div className="metric">4 profil</div>
-        <div className="delta">Okmányok és lejáratok</div>
+        <div className="metric">{homeFamilyCount||1} profil</div>
+        <div className="delta">{homeDocuments.length?homeDocuments.length+" irat · "+homeExpiringDocs.length+" figyelmet kér":"Okmányok és lejáratok"}</div>
       </button>
       <button className="card home-overview-card" onClick={()=>go("finance")}>
         <div className="row between"><Icon>◴</Icon><span className="badge">Pénzügyek</span></div>
@@ -188,6 +206,7 @@ function Docs() {
   const [note,setNote]=useState("");
   const [frontFile,setFrontFile]=useState<File|null>(null);
   const [backFile,setBackFile]=useState<File|null>(null);
+  const [docFilter,setDocFilter]=useState<"all"|"valid"|"expiring"|"expired">("all");
   const frontRef=useRef<HTMLInputElement>(null);
   const backRef=useRef<HTMLInputElement>(null);
 
@@ -306,8 +325,30 @@ function Docs() {
 
   const selected=family.find(x=>x.id===personId)??family[0];
   const visible=documents.filter(doc=>!personId||doc.family_member_id===personId);
+  const today=new Date();today.setHours(0,0,0,0);
+  const withExpiry=visible.map(doc=>{
+    const days=doc.expiry_date?Math.ceil((new Date(doc.expiry_date+"T00:00:00").getTime()-today.getTime())/86400000):null;
+    return {...doc,days};
+  });
+  const expiredCount=withExpiry.filter(x=>x.days!==null&&x.days<0).length;
+  const expiringCount=withExpiry.filter(x=>x.days!==null&&x.days>=0&&x.days<=30).length;
+  const validCount=withExpiry.length-expiredCount-expiringCount;
+  const filteredDocs=withExpiry.filter(doc=>{
+    if(docFilter==="expired")return doc.days!==null&&doc.days<0;
+    if(docFilter==="expiring")return doc.days!==null&&doc.days>=0&&doc.days<=30;
+    if(docFilter==="valid")return doc.days===null||doc.days>30;
+    return true;
+  }).sort((a,b)=>{
+    if(a.days===null&&b.days===null)return new Date(b.created_at).getTime()-new Date(a.created_at).getTime();
+    if(a.days===null)return 1;if(b.days===null)return -1;
+    return a.days-b.days;
+  });
+  const kindIcon=(value:string)=>({
+    identity:"▣",address:"⌂",tax:"N",health:"✚",student:"◫",teacher:"◆",
+    vehicle:"🚙",insurance:"✓",contract:"▤",shopping_card:"▥",other:"•"
+  } as Record<string,string>)[value]||"•";
 
-  return <div className="page">
+  return <div className="page docs-v2">
     <Header title="Család és iratok"/>
 
     <div className="profile-strip">
@@ -319,7 +360,7 @@ function Docs() {
       </button>
     </div>
 
-    <div className="row between" style={{marginTop:22}}>
+    <div className="row between docs-section-head">
       <div>
         <div className="section-title" style={{margin:0}}>Okmányok</div>
         <div className="label">{selected?selected.display_name+" · "+(selected.relation||"Családtag"):"Családi tér"}</div>
@@ -327,10 +368,23 @@ function Docs() {
       <button className="primary-btn" disabled={!personId} onClick={()=>setShowForm(true)}>＋ Új irat</button>
     </div>
 
-    <div className="notice" style={{marginTop:12}}>
+    <div className="docs-summary-grid">
+      <button className={"card docs-summary-card "+(docFilter==="all"?"active":"")} onClick={()=>setDocFilter("all")}><span>Összes irat</span><b>{visible.length}</b><small>{selected?.display_name||"Család"}</small></button>
+      <button className={"card docs-summary-card "+(docFilter==="expiring"?"active amber-card":"")} onClick={()=>setDocFilter("expiring")}><span>30 napon belül</span><b>{expiringCount}</b><small>figyelmet kér</small></button>
+      <button className={"card docs-summary-card "+(docFilter==="expired"?"active danger-card":"")} onClick={()=>setDocFilter("expired")}><span>Lejárt</span><b>{expiredCount}</b><small>cserélendő</small></button>
+    </div>
+
+    <div className="chips docs-filter-chips">
+      <button className={"chip "+(docFilter==="all"?"on":"")} onClick={()=>setDocFilter("all")}>Mind</button>
+      <button className={"chip "+(docFilter==="valid"?"on":"")} onClick={()=>setDocFilter("valid")}>Rendben <small>{validCount}</small></button>
+      <button className={"chip "+(docFilter==="expiring"?"on":"")} onClick={()=>setDocFilter("expiring")}>Hamarosan <small>{expiringCount}</small></button>
+      <button className={"chip "+(docFilter==="expired"?"on":"")} onClick={()=>setDocFilter("expired")}>Lejárt <small>{expiredCount}</small></button>
+    </div>
+
+    <div className="notice docs-private-note">
       <div className="row"><Icon tone="green">✓</Icon><div>
         <b>Privát, többeszközös irattár</b>
-        <div className="label">Előlap, hátlap, lejárat és családtag egy helyen. A fotók privát tárhelyen maradnak.</div>
+        <div className="label">Előlap, hátlap, lejárat és családtag egy helyen. A lejáró iratok a főoldali Közelgő blokkban is megjelennek.</div>
       </div></div>
     </div>
 
@@ -368,14 +422,15 @@ function Docs() {
       <div className="empty-icon">▤</div><b>Még nincs feltöltött irat</b>
       <div className="label">Az „Új irat” gombbal előlapot és hátlapot is menthetsz.</div>
     </div>:
+    filteredDocs.length===0?<div className="empty-card"><div className="empty-icon">⌕</div><b>Nincs ilyen állapotú irat</b><div className="label">Válassz másik szűrőt, vagy adj hozzá új iratot.</div></div>:
     <div className="grid doc-grid" style={{marginTop:12}}>
-      {visible.map(doc=><div className="card compact-doc" key={doc.id}>
+      {filteredDocs.map(doc=><div className="card compact-doc doc-record-card" key={doc.id}>
         <div className="doc-photo-stack">
           {doc.front?<button className="photo-wrap" onClick={()=>window.open(doc.front!.imageUrl,"_blank")}><img src={doc.front.imageUrl} alt={doc.title+" előlap"}/><span>Előlap</span></button>:<div className="photo-wrap missing">Nincs előlap</div>}
           {doc.back&&<button className="photo-wrap back" onClick={()=>window.open(doc.back!.imageUrl,"_blank")}><img src={doc.back.imageUrl} alt={doc.title+" hátlap"}/><span>Hátlap</span></button>}
         </div>
         <div className="row between" style={{marginTop:11,alignItems:"flex-start"}}>
-          <div className="grow"><div className="doc-name">{doc.title}</div><div className="doc-meta">{doc.member_name}</div></div>
+          <div className="row grow doc-title-row"><div className="doc-kind-icon">{kindIcon(doc.kind)}</div><div className="grow"><div className="doc-name">{doc.title}</div><div className="doc-meta">{doc.member_name}</div></div></div>
           {expiryBadge(doc)}
         </div>
         <div className="doc-meta-row">
