@@ -636,7 +636,7 @@ function Docs({cardOnly=false}:{cardOnly?:boolean}={}) {
 
     <div className="profile-strip">
       {family.map((p,i)=><button key={p.id} className={"profile "+(personId===p.id?"selected":"")} onClick={()=>setPersonId(p.id)} style={{border:0,background:"transparent",color:"inherit"}}>
-        <div className="picon profile-photo">{p.profile_url?<img src={p.profile_url} alt={p.display_name} onError={e=>{e.currentTarget.style.display="none";}}/>:<span>{i===0?"●":i===1?"◆":"○"}</span>}</div><small>{p.display_name}</small>
+        <div className="picon profile-photo"><span className="profile-fallback">{i===0?"●":i===1?"◆":"○"}</span>{p.profile_url&&<img src={p.profile_url} alt={p.display_name} onError={e=>{e.currentTarget.style.display="none";}}/>}</div><small>{p.display_name}</small>
       </button>)}
       {!cardOnly&&<button className="profile" onClick={addFamilyMember} style={{border:0,background:"transparent",color:"inherit"}}><div className="picon">＋</div><small>Hozzáadás</small></button>}
     </div>
@@ -644,7 +644,7 @@ function Docs({cardOnly=false}:{cardOnly?:boolean}={}) {
     <div className="row between docs-section-head">
       <div><div className="section-title" style={{margin:0}}>{cardOnly?"Kártyatárca":"Digitális irattartó"}</div><div className="label">{selected?selected.display_name+" · "+(selected.relation||"Családtag"):"Családi tér"}</div></div>
       <div className="row">
-        {!cardOnly&&<><input ref={profileRef} type="file" accept="image/*" style={{display:"none"}} onChange={e=>{const f=e.target.files?.[0];if(f)void uploadProfilePhoto(f);}}/><button className="ghost-btn" disabled={!personId} onClick={()=>profileRef.current?.click()}>◉ Profilkép</button></>}
+        {!cardOnly&&<><input id="profile-photo-input" ref={profileRef} className="sr-only-file" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" onClick={e=>{e.currentTarget.value="";}} onChange={e=>{const f=e.target.files?.[0];if(f)void uploadProfilePhoto(f);}}/><label className={"ghost-btn profile-upload-btn "+(!personId?"disabled":"")} htmlFor={personId?"profile-photo-input":undefined}>◉ Profilkép</label></>}
         <button className="ghost-btn" disabled={!personDocs.length} onClick={()=>{setPrintSelected({});setPrintStep("select");setPrintOpen(true);}}>▤ Nyomtatás</button>
         <button className="primary-btn" disabled={!personId} onClick={()=>setShowForm(true)}>＋ {cardOnly?"Új kártya":"Új irat"}</button>
       </div>
