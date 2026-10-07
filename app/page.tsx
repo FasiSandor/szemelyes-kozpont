@@ -50,16 +50,21 @@ function MiniChart() {
 function Home({go}:{go:(s:Screen)=>void}) {
   const [navData,setNavData]=useState<NavInvoiceData|null>(null);
   const [financeData,setFinanceData]=useState<FinanceData|null>(null);
+  const [previousFinanceData,setPreviousFinanceData]=useState<FinanceData|null>(null);
   useEffect(()=>{
     let active=true;
-    const month=new Date().toISOString().slice(0,7);
+    const current=new Date();
+    const month=current.toISOString().slice(0,7);
+    const prev=new Date(Date.UTC(current.getUTCFullYear(),current.getUTCMonth()-1,1)).toISOString().slice(0,7);
     Promise.all([
       fetch("/api/nav/invoices?year="+new Date().getFullYear(),{cache:"no-store"}).then(r=>r.json()),
-      fetch("/api/finance/transactions?month="+month,{cache:"no-store"}).then(r=>r.json())
-    ]).then(([nav,finance])=>{
+      fetch("/api/finance/transactions?month="+month,{cache:"no-store"}).then(r=>r.json()),
+      fetch("/api/finance/transactions?month="+prev,{cache:"no-store"}).then(r=>r.json())
+    ]).then(([nav,finance,previous])=>{
       if(!active)return;
       setNavData(nav);
       setFinanceData(finance);
+      setPreviousFinanceData(previous);
     }).catch(()=>{});
     return()=>{active=false;};
   },[]);
@@ -68,19 +73,16 @@ function Home({go}:{go:(s:Screen)=>void}) {
   const allYears=(navData?.allYears||[]).slice().sort((a,b)=>a.year-b.year);
   const totalInvoices=allYears.reduce((n,x)=>n+Number(x.count||0),0);
   const totalRevenue=allYears.reduce((n,x)=>n+Number(x.gross_huf||0),0);
-  const homeColors=["#3B82F6","#22D3EE","#22C55E","#F59E0B","#8B5CF6","#EF4444","#60A5FA","#64748B"];
-  const makeDonut=(items:FinanceSlice[])=>{
-    const total=items.reduce((sum,x)=>sum+Number(x.amount_huf||0),0);
-    let cursor=0;
-    const stops=items.slice(0,8).map((x,i)=>{
-      const pct=total?Number(x.amount_huf||0)/total*100:0;
-      const from=cursor;cursor+=pct;
-      return homeColors[i%homeColors.length]+" "+from+"% "+cursor+"%";
-    }).join(", ");
-    return {total,background:"conic-gradient("+(stops||"#2A3445 0 100%")+")"};
-  };
-  const purposeDonut=makeDonut(financeData?.categories||[]);
-  const merchantDonut=makeDonut(financeData?.merchants||[]);
+  const homeIncome=Number(financeData?.totals?.income_huf||0);
+  const homeExpense=Number(financeData?.totals?.expense_huf||0);
+  const homeBalance=homeIncome-homeExpense;
+  const prevIncome=Number(previousFinanceData?.totals?.income_huf||0);
+  const prevExpense=Number(previousFinanceData?.totals?.expense_huf||0);
+  const flowMax=Math.max(1,homeIncome,homeExpense);
+  const topCategories=(financeData?.categories||[]).slice(0,3);
+  const topCategoryMax=Math.max(1,...topCategories.map(x=>Number(x.amount_huf||0)));
+  const expenseDelta=prevExpense?Math.round((homeExpense-prevExpense)/prevExpense*100):null;
+  const incomeDelta=prevIncome?Math.round((homeIncome-prevIncome)/prevIncome*100):null;
 
   return <div className="page home-v2">
     <Header/>
@@ -121,19 +123,30 @@ function Home({go}:{go:(s:Screen)=>void}) {
     </div>
 
     <div className="section-title">Havi pénzügyi kép</div>
-    <div className="card home-finance-summary">
-      <div className="row between"><div><b>Kiadások megoszlása</b><div className="label">Két nézet: mire és hol költöd</div></div><button className="ghost-btn" onClick={()=>go("finance")}>Részletek ›</button></div>
-      <div className="home-donut-preview-grid">
-        <div className="home-donut-preview">
-          <div className="home-real-donut" style={{background:purposeDonut.background}}><span>{purposeDonut.total?money(purposeDonut.total):"—"}</span></div>
-          <div><b>Mire költök?</b><div className="label">{purposeDonut.total?(financeData?.categories||[]).slice(0,3).map(x=>x.name).join(" · "):"Még nincs kiadási adat"}</div></div>
-        </div>
-        <div className="home-donut-preview">
-          <div className="home-real-donut" style={{background:merchantDonut.background}}><span>{merchantDonut.total?money(merchantDonut.total):"—"}</span></div>
-          <div><b>Hol költök?</b><div className="label">{merchantDonut.total?(financeData?.merchants||[]).slice(0,3).map(x=>x.name).join(" · "):"Még nincs kereskedői adat"}</div></div>
-        </div>
+    <div className="card home-finance-summary home-cashflow-summary">
+      <div className="row between">
+        <div><b>Aktuális havi pénzmozgás</b><div className="label">Gyors összefoglaló · részletek a Pénzügyekben</div></div>
+        <button className="ghost-btn" onClick={()=>go("finance")}>Részletek ›</button>
       </div>
-      <div className="finance-source-note">{purposeDonut.total||merchantDonut.total?"Az aktuális havi OTP/banki tranzakciókból számolva.":"A donutok automatikusan megtelnek, amint a banki tranzakciók beérkeznek."}</div>
+
+      <div className="home-cashflow-kpis">
+        <div><span>Bevétel</span><b className="finance-positive">{money(homeIncome)}</b>{incomeDelta!==null&&<small className={incomeDelta>=0?"up":"down"}>{incomeDelta>=0?"+":""}{incomeDelta}% előző hóhoz</small>}</div>
+        <div><span>Kiadás</span><b>{money(homeExpense)}</b>{expenseDelta!==null&&<small className={expenseDelta<=0?"up":"down"}>{expenseDelta>=0?"+":""}{expenseDelta}% előző hóhoz</small>}</div>
+        <div><span>Maradvány</span><b className={homeBalance>=0?"finance-positive":"finance-negative"}>{money(homeBalance)}</b><small>{homeBalance>=0?"pozitív egyenleg":"negatív egyenleg"}</small></div>
+      </div>
+
+      <div className="home-flow-bars">
+        <div className="home-flow-row"><span>Bevétel</span><div className="home-flow-track"><i className="income" style={{width:Math.max(4,homeIncome/flowMax*100)+"%"}}/></div><b>{money(homeIncome)}</b></div>
+        <div className="home-flow-row"><span>Kiadás</span><div className="home-flow-track"><i className="expense" style={{width:Math.max(4,homeExpense/flowMax*100)+"%"}}/></div><b>{money(homeExpense)}</b></div>
+      </div>
+
+      <div className="home-top-spend">
+        <div className="row between"><b>Top kiadási területek</b><span className="label">aktuális hónap</span></div>
+        {topCategories.length?topCategories.map((x,i)=><div className="home-top-row" key={x.name}>
+          <div className="row between"><span>{i+1}. {x.name}</span><b>{money(x.amount_huf)}</b></div>
+          <div className="home-top-track"><i style={{width:Math.max(5,Number(x.amount_huf||0)/topCategoryMax*100)+"%"}}/></div>
+        </div>):<div className="label">Még nincs kiadási adat ebben a hónapban.</div>}
+      </div>
     </div>
 
     <div className="section-title">Gyorsműveletek</div>
