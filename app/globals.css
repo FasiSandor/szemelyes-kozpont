@@ -877,11 +877,11 @@ html,body{max-width:100%;overflow-x:hidden}
 
 /* ---------- PDF PREVIEW V7 ---------- */
 .pdf-preview-body{display:grid;gap:14px}
-.pdf-preview-frame-wrap{width:min(100%,720px);margin:0 auto;background:#E5E7EB;border-radius:14px;padding:8px;box-shadow:0 14px 46px rgba(0,0,0,.34)}
-.pdf-preview-frame{width:100%;height:min(72dvh,900px);border:0;border-radius:9px;background:#fff;display:block}
+.pdf-preview-frame-wrap{width:min(100%,640px);margin:0 auto;background:#E5E7EB;border-radius:14px;padding:8px;box-shadow:0 14px 46px rgba(0,0,0,.34)}
+.pdf-preview-frame{width:100%;aspect-ratio:210/297;height:auto;min-height:0;border:0;border-radius:9px;background:#fff;display:block}
 @media(max-width:560px){
   .pdf-preview-frame-wrap{padding:5px;border-radius:11px}
-  .pdf-preview-frame{height:66dvh}
+  .pdf-preview-frame{width:100%;aspect-ratio:210/297;height:auto}
 }
 
 .profile-photo{overflow:hidden;display:grid;place-items:center}

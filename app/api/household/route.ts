@@ -4,25 +4,51 @@ import { getOrCreateHousehold } from "@/lib/neon/household";
 import { sql } from "@/lib/neon/db";
 import { DOCUMENT_BUCKET, storageClient } from "@/lib/neon/storage";
 
-export async function GET(){
+export async function GET(request:Request){
   try{
     const {household}=await getOrCreateHousehold();
     const db=sql();
+    const {searchParams}=new URL(request.url);
+    const profileId=searchParams.get("profileId");
+
+    if(profileId){
+      const allowed=await db`
+        select id
+        from family_members
+        where id=${profileId} and household_id=${household.id}
+        limit 1
+      `;
+      if(!allowed.length) return new Response("Not found",{status:404});
+      try{
+        const s3=storageClient();
+        const object=await s3.send(new GetObjectCommand({
+          Bucket:DOCUMENT_BUCKET,
+          Key:`profiles/${household.id}/${profileId}`
+        }));
+        const bytes=await object.Body?.transformToByteArray();
+        if(!bytes) return new Response("Not found",{status:404});
+        const body=bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.byteLength) as ArrayBuffer;
+        return new Response(body,{
+          headers:{
+            "content-type":object.ContentType||"image/jpeg",
+            "cache-control":"private, no-store"
+          }
+        });
+      }catch{
+        return new Response("Not found",{status:404});
+      }
+    }
+
     const rows=await db`
       select id,display_name,relation,linked_user_id,created_at
       from family_members
       where household_id=${household.id}
       order by created_at asc
     `;
-    const s3=storageClient();
-    const members=await Promise.all(rows.map(async (member:any)=>({
+    const members=rows.map((member:any)=>({
       ...member,
-      profile_url:await getSignedUrl(
-        s3,
-        new GetObjectCommand({Bucket:DOCUMENT_BUCKET,Key:`profiles/${household.id}/${member.id}`}),
-        {expiresIn:300}
-      )
-    })));
+      profile_url:`/api/household?profileId=${encodeURIComponent(member.id)}&v=${Date.now()}`
+    }));
     return Response.json({household,members});
   }catch(error){
     if(error instanceof Error&&error.message==="UNAUTHORIZED"){

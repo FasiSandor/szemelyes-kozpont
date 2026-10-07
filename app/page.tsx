@@ -848,7 +848,7 @@ function Docs({cardOnly=false}:{cardOnly?:boolean}={}) {
             <div className="label">Generált PDF · {printLayout.sheets} oldal</div>
           </div>
           <div className="pdf-preview-frame-wrap">
-            {printPdfUrl?<iframe className="pdf-preview-frame" src={printPdfUrl+"#view=FitH"} title="PDF előnézet"/>:<div className="empty-card"><b>Nincs PDF előnézet.</b></div>}
+            {printPdfUrl?<iframe className="pdf-preview-frame" src={printPdfUrl+"#view=Fit"} title="PDF előnézet"/>:<div className="empty-card"><b>Nincs PDF előnézet.</b></div>}
           </div>
           <div className="print-center-footer preview-footer">
             <div className="label">Ezt a PDF-et küldjük tovább az iPhone megosztómenüjébe vagy a Nyomtatás funkcióba.</div>
