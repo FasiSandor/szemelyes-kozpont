@@ -805,3 +805,31 @@ html,body{max-width:100%;overflow-x:hidden}
  .document-stage{border-radius:14px}
  .page-arrow{width:38px;height:48px}
 }
+
+
+/* ---------- FOUR CORNER SCANNER + PDF PRINT V5 ---------- */
+.four-corner-stage{position:relative;touch-action:none;display:grid;place-items:center;overflow:hidden;min-height:52dvh;max-height:68dvh;background:#02060B}
+.four-corner-stage>img{width:100%;height:100%;object-fit:contain;display:block;pointer-events:none;user-select:none}
+.scan-polygon{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.scan-polygon polygon{fill:rgba(59,130,246,.08);stroke:#22D3EE;stroke-width:5;vector-effect:non-scaling-stroke;filter:drop-shadow(0 0 6px rgba(34,211,238,.55))}
+.scan-handle{position:absolute;transform:translate(-50%,-50%);width:34px;height:34px;border-radius:999px;border:3px solid #E0F2FE;background:#2563EB;color:#fff;font-size:11px;font-weight:900;display:grid;place-items:center;box-shadow:0 0 0 5px rgba(59,130,246,.18),0 4px 14px rgba(0,0,0,.35);touch-action:none}
+.scanner-controls{display:grid;grid-template-columns:auto 1fr;gap:10px;align-items:center}
+.scanner-controls .primary-btn{width:100%}
+
+.print-modal-overlay{position:fixed;inset:0;z-index:1050;background:rgba(3,7,12,.78);backdrop-filter:blur(10px);display:grid;place-items:center;padding:18px}
+.print-modal{width:min(460px,100%);display:grid;gap:14px}
+.print-choice-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.print-choice-grid button{border:1px solid #36506F;background:linear-gradient(160deg,#111827,#0D1725);color:#E5EEF9;border-radius:13px;padding:14px 8px;font-weight:800;font-size:11px}
+.print-choice-grid button:active{transform:scale(.98);border-color:#60A5FA}
+
+.docs-section-head>.row{gap:8px}
+.docs-section-head>.row .ghost-btn{white-space:nowrap}
+
+@media(max-width:520px){
+  .four-corner-stage{min-height:48dvh;max-height:62dvh}
+  .scan-handle{width:38px;height:38px}
+  .scanner-controls{grid-template-columns:1fr}
+  .print-choice-grid{grid-template-columns:1fr}
+  .docs-section-head{align-items:flex-end}
+  .docs-section-head>.row{flex-direction:column;align-items:stretch}
+}
