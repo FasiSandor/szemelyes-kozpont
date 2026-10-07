@@ -41,7 +41,11 @@ export async function ebRequest(path:string,init?:RequestInit){
     cache:"no-store"
   });
   const json=await res.json().catch(()=>({}));
-  if(!res.ok)throw new Error(json.detail||json.message||json.error||("Enable Banking HTTP "+res.status));
+  if(!res.ok){
+    const detail=json.detail??json.message??json.error;
+    const msg=typeof detail==="string"?detail:detail?JSON.stringify(detail):("Enable Banking HTTP "+res.status);
+    throw new Error(msg);
+  }
   return json;
 }
 
