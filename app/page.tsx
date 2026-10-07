@@ -557,6 +557,43 @@ function Docs({cardOnly=false}:{cardOnly?:boolean}={}) {
   } as Record<string,string>)[value]||"•";
   const currentIsCard=cardKinds.has(kind);
 
+  function togglePrintDoc(doc:RemoteDocument){
+    setPrintSelected(current=>{
+      if(current[doc.id]){const next={...current};delete next[doc.id];return next;}
+      return {...current,[doc.id]:(doc.pages||[]).map((_,i)=>i)};
+    });
+  }
+
+  function togglePrintPage(doc:RemoteDocument,index:number){
+    setPrintSelected(current=>{
+      const selected=current[doc.id]||[];
+      const nextPages=selected.includes(index)?selected.filter(i=>i!==index):[...selected,index].sort((a,b)=>a-b);
+      const next={...current};
+      if(nextPages.length)next[doc.id]=nextPages;else delete next[doc.id];
+      return next;
+    });
+  }
+
+  const printItems:A4PrintItem[]=personDocs.flatMap(doc=>
+    (printSelected[doc.id]||[]).map(index=>({
+      imageUrl:doc.pages?.[index]?.imageUrl||"",
+      title:doc.title,
+      label:index===0?"Előlap":index===1?"Hátlap":(index+1)+". oldal",
+      isCard:cardVisualKinds.has(doc.kind)
+    })).filter(item=>Boolean(item.imageUrl))
+  );
+  const printLayout=layoutA4Items(printItems);
+
+  async function exportPrintSheet(){
+    if(!printItems.length)return;
+    setPrintBusy(true);
+    try{
+      const blob=await createA4PrintPdf(printItems,(selected?.display_name||"Csaladi")+"_iratok");
+      if(blob)await shareOrSavePdf(blob,(selected?.display_name||"Családi")+" iratok");
+    }catch(e){setMessage(e instanceof Error?e.message:"A PDF elkészítése nem sikerült.");}
+    finally{setPrintBusy(false);}
+  }
+
   return <div className="page docs-v3">
     <Header title={cardOnly?"Kártyák":"Család és iratok"}/>
 
@@ -701,6 +738,71 @@ function Docs({cardOnly=false}:{cardOnly?:boolean}={}) {
           </div>}
         </article>;
       })}
+    </div>}
+
+    {printOpen&&<div className="print-center-overlay">
+      <div className="print-center-shell">
+        <div className="print-center-header">
+          <div>
+            <div className="eyebrow">Nyomtatási központ</div>
+            <div className="title">{printStep==="select"?"Mit szeretnél nyomtatni?":"A4 előnézet"}</div>
+            <div className="label">{selected?.display_name||"Családtag"}</div>
+          </div>
+          <button className="ghost-btn" onClick={()=>{setPrintOpen(false);setPrintStep("select");}}>Bezárás</button>
+        </div>
+
+        {printStep==="select"?<div className="print-select-body">
+          <div className="print-select-hint">Jelöld ki az iratokat. Alapból az összes elérhető oldaluk bekerül, de külön is ki-be kapcsolhatod az elő- és hátlapot.</div>
+          <div className="print-doc-list">
+            {personDocs.map(doc=>{
+              const selectedPages=printSelected[doc.id]||[];
+              const checked=selectedPages.length>0;
+              return <div className={"print-doc-row "+(checked?"selected":"")} key={doc.id}>
+                <button className="print-doc-main" onClick={()=>togglePrintDoc(doc)}>
+                  <span className="print-check">{checked?"✓":""}</span>
+                  <span className="grow"><b>{doc.title}</b><small>{doc.pages?.length||0} oldal</small></span>
+                </button>
+                {checked&&<div className="print-side-options">
+                  {(doc.pages||[]).map((page,index)=><button key={page.id} className={selectedPages.includes(index)?"on":""} onClick={()=>togglePrintPage(doc,index)}>
+                    {index===0?"Előlap":index===1?"Hátlap":(index+1)+". oldal"}
+                  </button>)}
+                </div>}
+              </div>;
+            })}
+          </div>
+          <div className="print-center-footer">
+            <div><b>{printItems.length}</b> oldal kiválasztva</div>
+            <button className="primary-btn" disabled={!printItems.length} onClick={()=>setPrintStep("preview")}>A4 előnézet ›</button>
+          </div>
+        </div>:<div className="print-preview-body">
+          <div className="print-preview-toolbar">
+            <button className="ghost-btn" onClick={()=>setPrintStep("select")}>‹ Kiválasztás módosítása</button>
+            <div className="label">{printItems.length} kép · {printLayout.sheets} A4 oldal</div>
+          </div>
+          <div className="a4-preview-stack">
+            {Array.from({length:printLayout.sheets}).map((_,sheetIndex)=><div className="a4-sheet-wrap" key={sheetIndex}>
+              <div className="a4-sheet">
+                {printLayout.placed.filter(item=>item.sheet===sheetIndex).map((item,index)=><img
+                  key={item.title+item.label+index}
+                  src={item.imageUrl}
+                  alt={item.title+" "+item.label}
+                  style={{
+                    left:(item.x/210*100)+"%",
+                    top:(item.y/297*100)+"%",
+                    width:(item.w/210*100)+"%",
+                    height:(item.h/297*100)+"%"
+                  }}
+                />)}
+              </div>
+              <div className="a4-sheet-label">A4 · {sheetIndex+1}. oldal</div>
+            </div>)}
+          </div>
+          <div className="print-center-footer preview-footer">
+            <div className="label">Ez kerül a papírra. A kártyák valós mérethez közeli méretben, nagyítás nélkül jelennek meg.</div>
+            <button className="primary-btn" disabled={printBusy} onClick={exportPrintSheet}>{printBusy?"PDF készül…":"PDF / Megosztás / Nyomtatás"}</button>
+          </div>
+        </div>}
+      </div>
     </div>}
 
   </div>
