@@ -6,7 +6,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createVault, getLocalVaultPayload, saveVault, setLocalVaultPayload, unlockVault, vaultExists, type StoredVault, type VaultEntry } from "@/lib/vault";
 import SecureGate from "@/components/SecureGate";
 import QRCode from "react-qr-code";
-import Cropper, { type Area } from "react-easy-crop";
 
 type Screen = "home" | "docs" | "finance" | "tasks" | "more" | "business" | "nav" | "vault" | "cards" | "vehicles" | "reports";
 
@@ -179,22 +178,129 @@ function Home({go}:{go:(s:Screen)=>void}) {
   </div>
 }
 
-async function cropFileToArea(file:File,area:Area){
+
+type ScanPoint={x:number;y:number};
+
+function solveLinear8(a:number[][],b:number[]){
+  const m=a.map((row,i)=>[...row,b[i]]);
+  for(let col=0;col<8;col++){
+    let pivot=col;
+    for(let r=col+1;r<8;r++)if(Math.abs(m[r][col])>Math.abs(m[pivot][col]))pivot=r;
+    [m[col],m[pivot]]=[m[pivot],m[col]];
+    const div=m[col][col]||1e-12;
+    for(let c=col;c<=8;c++)m[col][c]/=div;
+    for(let r=0;r<8;r++){
+      if(r===col)continue;
+      const f=m[r][col];
+      for(let c=col;c<=8;c++)m[r][c]-=f*m[col][c];
+    }
+  }
+  return m.map(row=>row[8]);
+}
+
+function homographyRectToQuad(w:number,h:number,q:ScanPoint[]){
+  const dst=[[0,0],[w,0],[w,h],[0,h]];
+  const A:number[][]=[]; const B:number[]=[];
+  for(let i=0;i<4;i++){
+    const [x,y]=dst[i], sx=q[i].x, sy=q[i].y;
+    A.push([x,y,1,0,0,0,-sx*x,-sx*y]);B.push(sx);
+    A.push([0,0,0,x,y,1,-sy*x,-sy*y]);B.push(sy);
+  }
+  const [a,b,c,d,e,f,g,hh]=solveLinear8(A,B);
+  return (x:number,y:number)=>{
+    const den=g*x+hh*y+1;
+    return {x:(a*x+b*y+c)/den,y:(d*x+e*y+f)/den};
+  };
+}
+
+function drawTriangle(
+  ctx:CanvasRenderingContext2D,img:HTMLImageElement,
+  s0:ScanPoint,s1:ScanPoint,s2:ScanPoint,
+  d0:ScanPoint,d1:ScanPoint,d2:ScanPoint
+){
+  const den=s0.x*(s1.y-s2.y)+s1.x*(s2.y-s0.y)+s2.x*(s0.y-s1.y);
+  if(Math.abs(den)<1e-8)return;
+  const a=(d0.x*(s1.y-s2.y)+d1.x*(s2.y-s0.y)+d2.x*(s0.y-s1.y))/den;
+  const c=(d0.x*(s2.x-s1.x)+d1.x*(s0.x-s2.x)+d2.x*(s1.x-s0.x))/den;
+  const e=(d0.x*(s1.x*s2.y-s2.x*s1.y)+d1.x*(s2.x*s0.y-s0.x*s2.y)+d2.x*(s0.x*s1.y-s1.x*s0.y))/den;
+  const bb=(d0.y*(s1.y-s2.y)+d1.y*(s2.y-s0.y)+d2.y*(s0.y-s1.y))/den;
+  const dd=(d0.y*(s2.x-s1.x)+d1.y*(s0.x-s2.x)+d2.y*(s1.x-s0.x))/den;
+  const ff=(d0.y*(s1.x*s2.y-s2.x*s1.y)+d1.y*(s2.x*s0.y-s0.x*s2.y)+d2.y*(s0.x*s1.y-s1.x*s0.y))/den;
+  ctx.save();
+  ctx.beginPath();ctx.moveTo(d0.x,d0.y);ctx.lineTo(d1.x,d1.y);ctx.lineTo(d2.x,d2.y);ctx.closePath();ctx.clip();
+  ctx.setTransform(a,bb,c,dd,e,ff);ctx.drawImage(img,0,0);ctx.restore();
+}
+
+async function perspectiveCropFile(file:File,corners:ScanPoint[]){
   const url=URL.createObjectURL(file);
   try{
-    const image=await new Promise<HTMLImageElement>((resolve,reject)=>{
-      const img=new Image();
-      img.onload=()=>resolve(img);img.onerror=reject;img.src=url;
+    const img=await new Promise<HTMLImageElement>((resolve,reject)=>{
+      const el=new Image();el.onload=()=>resolve(el);el.onerror=reject;el.src=url;
     });
-    const canvas=document.createElement("canvas");
-    canvas.width=Math.max(1,Math.round(area.width));
-    canvas.height=Math.max(1,Math.round(area.height));
-    const ctx=canvas.getContext("2d");
-    if(!ctx)throw new Error("A kép kivágása nem sikerült.");
-    ctx.drawImage(image,area.x,area.y,area.width,area.height,0,0,canvas.width,canvas.height);
-    const blob=await new Promise<Blob>((resolve,reject)=>canvas.toBlob(b=>b?resolve(b):reject(new Error("A kép mentése nem sikerült.")),"image/jpeg",0.94));
+    const q=corners.map(p=>({x:p.x*img.naturalWidth,y:p.y*img.naturalHeight}));
+    const dist=(p:ScanPoint,r:ScanPoint)=>Math.hypot(p.x-r.x,p.y-r.y);
+    let w=Math.round(Math.max(dist(q[0],q[1]),dist(q[3],q[2])));
+    let h=Math.round(Math.max(dist(q[0],q[3]),dist(q[1],q[2])));
+    const maxW=1500;
+    if(w>maxW){const k=maxW/w;w=Math.round(w*k);h=Math.round(h*k);}
+    w=Math.max(320,w);h=Math.max(200,h);
+    const canvas=document.createElement("canvas");canvas.width=w;canvas.height=h;
+    const ctx=canvas.getContext("2d");if(!ctx)throw new Error("A kép feldolgozása nem sikerült.");
+    ctx.fillStyle="#fff";ctx.fillRect(0,0,w,h);
+    const map=homographyRectToQuad(w,h,q);
+    const cols=28,rows=18;
+    for(let iy=0;iy<rows;iy++){
+      for(let ix=0;ix<cols;ix++){
+        const x0=ix*w/cols,x1=(ix+1)*w/cols,y0=iy*h/rows,y1=(iy+1)*h/rows;
+        const s00=map(x0,y0),s10=map(x1,y0),s11=map(x1,y1),s01=map(x0,y1);
+        const d00={x:x0,y:y0},d10={x:x1,y:y0},d11={x:x1,y:y1},d01={x:x0,y:y1};
+        drawTriangle(ctx,img,s00,s10,s11,d00,d10,d11);
+        drawTriangle(ctx,img,s00,s11,s01,d00,d11,d01);
+      }
+    }
+    const blob=await new Promise<Blob>((resolve,reject)=>canvas.toBlob(b=>b?resolve(b):reject(new Error("A kép mentése nem sikerült.")),"image/jpeg",0.95));
     return new File([blob],file.name.replace(/\.[^.]+$/,"")+"_scan.jpg",{type:"image/jpeg"});
   }finally{URL.revokeObjectURL(url);}
+}
+
+async function imageUrlToDataUrl(url:string){
+  const res=await fetch(url);if(!res.ok)throw new Error("Az iratkép nem tölthető le.");
+  const blob=await res.blob();
+  return await new Promise<string>((resolve,reject)=>{
+    const r=new FileReader();r.onload=()=>resolve(String(r.result));r.onerror=reject;r.readAsDataURL(blob);
+  });
+}
+
+async function createDocumentPdf(
+  pages:{imageUrl:string}[],
+  title:string,
+  isCard:boolean,
+  indices:number[]
+){
+  const {jsPDF}=await import("jspdf");
+  const pdf=new jsPDF({unit:"mm",format:"a4",orientation:"portrait"});
+  for(let n=0;n<indices.length;n++){
+    if(n>0)pdf.addPage();
+    const data=await imageUrlToDataUrl(pages[indices[n]].imageUrl);
+    const img=new Image();
+    await new Promise<void>((resolve,reject)=>{img.onload=()=>resolve();img.onerror=reject;img.src=data;});
+    const pageW=210,pageH=297;
+    let width:number,height:number;
+    if(isCard){width=85.6;height=53.98;}
+    else{
+      const ratio=img.naturalWidth/img.naturalHeight;
+      width=180;height=width/ratio;
+      if(height>257){height=257;width=height*ratio;}
+    }
+    const x=(pageW-width)/2,y=(pageH-height)/2;
+    pdf.addImage(data,"JPEG",x,y,width,height,undefined,"FAST");
+  }
+  const blob=pdf.output("blob");
+  const file=new File([blob],title.replace(/[^\p{L}\p{N}_-]+/gu,"_")+".pdf",{type:"application/pdf"});
+  if(navigator.share&&navigator.canShare?.({files:[file]})){await navigator.share({files:[file],title});return;}
+  const href=URL.createObjectURL(blob);
+  const a=document.createElement("a");a.href=href;a.download=file.name;document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(href),2000);
 }
 
 function Docs({cardOnly=false}:{cardOnly?:boolean}={}) {
