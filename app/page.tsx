@@ -197,27 +197,6 @@ async function cropFileToArea(file:File,area:Area){
   }finally{URL.revokeObjectURL(url);}
 }
 
-function printImagePage(url:string,title:string,isCard:boolean){
-  const w=window.open("","_blank");
-  if(!w)return;
-  try{w.opener=null;}catch{}
-  const size=isCard?"width:85.6mm;height:53.98mm;object-fit:contain;":"max-width:190mm;max-height:270mm;object-fit:contain;";
-  w.document.write('<!doctype html><html><head><title>'+title+'</title><style>@page{margin:10mm}body{margin:0;display:grid;place-items:center;min-height:100vh;background:#fff}.print-img{'+size+'}</style></head><body><img class="print-img" src="'+url.replace(/"/g,"&quot;")+'"></body></html>');
-  w.document.close();
-  w.focus();
-  setTimeout(()=>w.print(),450);
-}
-
-function printDocumentSet(pages:{imageUrl:string}[],title:string,isCard:boolean){
-  const w=window.open("","_blank");
-  if(!w)return;
-  try{w.opener=null;}catch{}
-  const size=isCard?"width:85.6mm;height:53.98mm;object-fit:contain;":"max-width:190mm;max-height:270mm;object-fit:contain;";
-  const body=pages.map((p,i)=>'<section class="sheet"><img class="print-img" src="'+p.imageUrl.replace(/"/g,"&quot;")+'"><small>'+(i+1)+'. oldal</small></section>').join("");
-  w.document.write('<!doctype html><html><head><title>'+title+'</title><style>@page{margin:10mm}.sheet{break-after:page;min-height:270mm;display:grid;place-items:center;align-content:center;gap:5mm}.sheet:last-child{break-after:auto}.print-img{'+size+'}small{font:11px sans-serif;color:#555}</style></head><body>'+body+'</body></html>');
-  w.document.close();w.focus();setTimeout(()=>w.print(),550);
-}
-
 function Docs({cardOnly=false}:{cardOnly?:boolean}={}) {
   type RemoteMember={id:string;display_name:string;relation:string|null;linked_user_id:string|null};
   type DocPhoto={id:string;imageUrl:string;storageKey:string;pageIndex:number;side:string};
@@ -573,8 +552,6 @@ function Docs({cardOnly=false}:{cardOnly?:boolean}={}) {
                 </div>
                 <div className="document-actions">
                   <button className="ghost-btn" onClick={()=>window.open(photo.imageUrl,"_blank")}>Teljes méret</button>
-                  <button className="ghost-btn" onClick={()=>printImagePage(photo.imageUrl,doc.title+" "+(current+1)+". oldal",isCard||cardVisualKinds.has(doc.kind))}>Nyomtatás</button>
-                  {pages.length>1&&<button className="ghost-btn" onClick={()=>printDocumentSet(pages,doc.title,isCard||cardVisualKinds.has(doc.kind))}>Összes oldal</button>}
                 </div>
               </div>:null;
             })()}
