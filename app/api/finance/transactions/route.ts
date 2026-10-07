@@ -56,6 +56,14 @@ export async function GET(request:Request){
     const to=next.toISOString().slice(0,10);
     const db=sql();
 
+    const availableMonthRows=await db`
+      select to_char(booked_at,'YYYY-MM') as month, count(*)::int as count
+      from bank_transactions
+      where household_id=${household.id}
+      group by 1
+      order by 1 desc
+    `;
+
     const rows=await db`
       select id,external_id,booked_at,amount_huf,merchant,description,category,is_business,created_at
       from bank_transactions
@@ -123,7 +131,8 @@ export async function GET(request:Request){
       transactions:rows,
       categories:categoryRows,
       merchants:merchantRows,
-      incomeBreakdown:incomeRows
+      incomeBreakdown:incomeRows,
+      availableMonths:availableMonthRows
     });
   }catch(error){
     if(error instanceof Error&&error.message==="UNAUTHORIZED") return Response.json({error:"Nincs bejelentkezve."},{status:401});
