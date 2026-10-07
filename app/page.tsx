@@ -329,7 +329,7 @@ async function shareOrSavePdf(blob:Blob,title:string){
 }
 
 function Docs({cardOnly=false}:{cardOnly?:boolean}={}) {
-  type RemoteMember={id:string;display_name:string;relation:string|null;linked_user_id:string|null};
+  type RemoteMember={id:string;display_name:string;relation:string|null;linked_user_id:string|null;profile_url?:string|null};
   type DocPhoto={id:string;imageUrl:string;storageKey:string;pageIndex:number;side:string};
   type DocMeta={issuer?:string;last4?:string;codeValue?:string;codeType?:"qr"|"barcode"};
   type RemoteDocument={
@@ -391,6 +391,7 @@ function Docs({cardOnly=false}:{cardOnly?:boolean}={}) {
   const frontRef=useRef<HTMLInputElement>(null);
   const backRef=useRef<HTMLInputElement>(null);
   const extraRef=useRef<HTMLInputElement>(null);
+  const profileRef=useRef<HTMLInputElement>(null);
   const cropImageUrl=useMemo(()=>cropTarget?URL.createObjectURL(cropTarget.file):"",[cropTarget]);
   useEffect(()=>()=>{if(cropImageUrl)URL.revokeObjectURL(cropImageUrl);},[cropImageUrl]);
   useEffect(()=>()=>{if(printPdfUrl)URL.revokeObjectURL(printPdfUrl);},[printPdfUrl]);
@@ -420,6 +421,24 @@ function Docs({cardOnly=false}:{cardOnly?:boolean}={}) {
     })();
     return()=>{active=false;};
   },[]);
+
+  async function uploadProfilePhoto(file:File){
+    if(!personId)return;
+    setMessage("Profilkép feltöltése…");
+    try{
+      const prepare=await fetch("/api/household",{
+        method:"POST",headers:{"content-type":"application/json"},
+        body:JSON.stringify({action:"profilePrepare",familyMemberId:personId,contentType:file.type||"image/jpeg"})
+      });
+      const prep=await prepare.json();
+      if(!prepare.ok)throw new Error(prep.error||"A profilkép feltöltése nem indítható.");
+      const upload=await fetch(prep.uploadUrl,{method:"PUT",headers:{"content-type":file.type||"image/jpeg"},body:file});
+      if(!upload.ok)throw new Error("A profilkép feltöltése nem sikerült.");
+      await loadHousehold();
+      setMessage("Profilkép frissítve.");
+    }catch(e){setMessage(e instanceof Error?e.message:"Profilkép hiba.");}
+    finally{if(profileRef.current)profileRef.current.value="";}
+  }
 
   function resetForm(){
     setKind(cardOnly?"bank_card":"identity");
@@ -617,7 +636,7 @@ function Docs({cardOnly=false}:{cardOnly?:boolean}={}) {
 
     <div className="profile-strip">
       {family.map((p,i)=><button key={p.id} className={"profile "+(personId===p.id?"selected":"")} onClick={()=>setPersonId(p.id)} style={{border:0,background:"transparent",color:"inherit"}}>
-        <div className="picon">{i===0?"●":i===1?"◆":"○"}</div><small>{p.display_name}</small>
+        <div className="picon profile-photo">{p.profile_url?<img src={p.profile_url} alt={p.display_name} onError={e=>{e.currentTarget.style.display="none";}}/>:<span>{i===0?"●":i===1?"◆":"○"}</span>}</div><small>{p.display_name}</small>
       </button>)}
       {!cardOnly&&<button className="profile" onClick={addFamilyMember} style={{border:0,background:"transparent",color:"inherit"}}><div className="picon">＋</div><small>Hozzáadás</small></button>}
     </div>
@@ -625,6 +644,7 @@ function Docs({cardOnly=false}:{cardOnly?:boolean}={}) {
     <div className="row between docs-section-head">
       <div><div className="section-title" style={{margin:0}}>{cardOnly?"Kártyatárca":"Digitális irattartó"}</div><div className="label">{selected?selected.display_name+" · "+(selected.relation||"Családtag"):"Családi tér"}</div></div>
       <div className="row">
+        {!cardOnly&&<><input ref={profileRef} type="file" accept="image/*" style={{display:"none"}} onChange={e=>{const f=e.target.files?.[0];if(f)void uploadProfilePhoto(f);}}/><button className="ghost-btn" disabled={!personId} onClick={()=>profileRef.current?.click()}>◉ Profilkép</button></>}
         <button className="ghost-btn" disabled={!personDocs.length} onClick={()=>{setPrintSelected({});setPrintStep("select");setPrintOpen(true);}}>▤ Nyomtatás</button>
         <button className="primary-btn" disabled={!personId} onClick={()=>setShowForm(true)}>＋ {cardOnly?"Új kártya":"Új irat"}</button>
       </div>

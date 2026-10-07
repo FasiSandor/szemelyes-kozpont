@@ -36,7 +36,8 @@ export async function GET(request:Request){
       const object=await s3.send(new GetObjectCommand({Bucket:DOCUMENT_BUCKET,Key:imageKey}));
       const bytes=await object.Body?.transformToByteArray();
       if(!bytes) return new Response("Not found",{status:404});
-      return new Response(bytes,{
+      const body=bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.byteLength) as ArrayBuffer;
+      return new Response(body,{
         headers:{
           "content-type":object.ContentType||"image/jpeg",
           "cache-control":"private, max-age=60"
