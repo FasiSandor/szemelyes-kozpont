@@ -610,3 +610,26 @@ textarea.input{resize:vertical;min-height:62px;padding-top:11px}
  .spending-empty-layout{grid-template-columns:1fr}
  .nav-invoice-scroll{max-height:355px}
 }
+
+
+/* ---------- FINANCE TRANSACTIONS V1 ---------- */
+.finance-top-row{display:flex;gap:10px;align-items:end;justify-content:space-between;flex-wrap:wrap;margin-top:12px}
+.finance-month-picker{display:grid;gap:5px;color:#94A3B8;font-size:10px}
+.finance-month-picker input{min-height:40px;border-radius:12px;border:1px solid #2A3445;background:#111827;color:#E5EEF9;padding:0 11px}
+.finance-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}
+.finance-positive{color:#4ADE80!important}.finance-negative{color:#FCA5A5!important}
+.finance-income-list{display:grid;gap:2px}
+.finance-income-row{padding:10px 2px;border-bottom:1px solid rgba(71,91,122,.28)}
+.finance-income-row:last-child{border-bottom:0}
+.finance-transactions-scroll{max-height:410px;overflow-y:auto;padding:8px 14px;scrollbar-width:thin;scrollbar-color:#3B82F6 transparent}
+.finance-transaction-row{display:flex;gap:12px;align-items:center;padding:11px 0;border-bottom:1px solid rgba(71,91,122,.28)}
+.finance-transaction-row:last-child{border-bottom:0}
+.finance-transaction-row>b{white-space:nowrap;font-size:12px}
+.finance-bank-note{margin-top:16px}
+@media(max-width:700px){
+ .finance-kpis{grid-template-columns:1fr}
+ .finance-top-row{align-items:stretch}
+ .finance-top-row .primary-btn{width:100%}
+ .finance-month-picker{width:100%}
+ .finance-month-picker input{width:100%}
+}

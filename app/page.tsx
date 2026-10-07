@@ -348,29 +348,180 @@ function Docs() {
     </div>}
   </div>
 }
+type FinanceTransaction={
+  id:string;booked_at:string;amount_huf:string|number;merchant:string|null;description:string|null;category:string|null;is_business:boolean;
+};
+type FinanceSlice={name:string;amount_huf:string|number;count:number};
+type FinanceData={
+  month:string;
+  totals?:{income_huf:string|number;expense_huf:string|number;count:number};
+  transactions?:FinanceTransaction[];
+  categories?:FinanceSlice[];
+  merchants?:FinanceSlice[];
+  incomeBreakdown?:FinanceSlice[];
+};
+
+function normalizeCsvHeader(value:string){
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z0-9]+/g," ").trim();
+}
+function parseCsvLine(line:string,separator:string){
+  const out:string[]=[];let cur="";let quoted=false;
+  for(let i=0;i<line.length;i++){
+    const ch=line[i];
+    if(ch==='"'){
+      if(quoted&&line[i+1]==='"'){cur+='"';i++;}else quoted=!quoted;
+    }else if(ch===separator&&!quoted){out.push(cur.trim());cur="";}
+    else cur+=ch;
+  }
+  out.push(cur.trim());
+  return out;
+}
+function csvDate(value:string){
+  const v=value.trim();
+  let m=v.match(/^(\d{4})[-./](\d{1,2})[-./](\d{1,2})/);
+  if(m)return m[1]+"-"+m[2].padStart(2,"0")+"-"+m[3].padStart(2,"0");
+  m=v.match(/^(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{4})/);
+  if(m)return m[3]+"-"+m[2].padStart(2,"0")+"-"+m[1].padStart(2,"0");
+  return "";
+}
+function csvAmount(value:string){
+  const cleaned=value.replace(/HUF|Ft/gi,"").replace(/\s/g,"").replace(/\./g,"").replace(",",".").replace(/[^0-9+.-]/g,"");
+  const n=Number(cleaned);return Number.isFinite(n)?n:0;
+}
+function parseBankCsv(text:string){
+  const lines=text.replace(/^\uFEFF/,"").split(/\r?\n/).filter(x=>x.trim());
+  if(lines.length<2)return [];
+  const separator=(lines[0].match(/;/g)||[]).length>=(lines[0].match(/,/g)||[]).length?";":",";
+  const headers=parseCsvLine(lines[0],separator).map(normalizeCsvHeader);
+  const find=(terms:string[])=>headers.findIndex(h=>terms.some(t=>h.includes(t)));
+  const dateI=find(["konyveles datum","konyvelesi datum","datum","date"]);
+  const amountI=find(["osszeg","amount"]);
+  const debitI=find(["terheles","debit"]);
+  const creditI=find(["jovairas","credit"]);
+  const descI=find(["kozlemeny","leiras","megjegyzes","description","tranzakcio"]);
+  const merchantI=find(["partner neve","partner","kereskedo","merchant","kedvezmenyezett"]);
+  const idI=find(["azonosito","tranzakcio id","reference","referencia"]);
+  if(dateI<0||(amountI<0&&debitI<0&&creditI<0))return [];
+  return lines.slice(1).map(line=>{
+    const cells=parseCsvLine(line,separator);
+    const bookedAt=csvDate(cells[dateI]||"");
+    let amountHuf=amountI>=0?csvAmount(cells[amountI]||""):0;
+    if(amountI<0){
+      const debit=debitI>=0?Math.abs(csvAmount(cells[debitI]||"")):0;
+      const credit=creditI>=0?Math.abs(csvAmount(cells[creditI]||"")):0;
+      amountHuf=credit>0?credit:-debit;
+    }
+    return {bookedAt,amountHuf,merchant:merchantI>=0?cells[merchantI]||"":"" ,description:descI>=0?cells[descI]||"":"",externalId:idI>=0?cells[idI]||undefined:undefined};
+  }).filter(x=>x.bookedAt&&x.amountHuf!==0);
+}
+
 function Finance() {
+  const now=new Date();
+  const [month,setMonth]=useState(now.toISOString().slice(0,7));
   const [view,setView]=useState<"purpose"|"merchant">("purpose");
-  return <div className="page finance-v2">
+  const [data,setData]=useState<FinanceData|null>(null);
+  const [loading,setLoading]=useState(true);
+  const [importing,setImporting]=useState(false);
+  const [message,setMessage]=useState("");
+  const fileRef=useRef<HTMLInputElement>(null);
+
+  async function load(){
+    setLoading(true);
+    try{
+      const res=await fetch("/api/finance/transactions?month="+encodeURIComponent(month),{cache:"no-store"});
+      const json=await res.json();
+      if(!res.ok)throw new Error(json.error||"Nem sikerült betölteni.");
+      setData(json);
+    }catch(e){setMessage(e instanceof Error?e.message:"Betöltési hiba.");}
+    finally{setLoading(false);}
+  }
+  useEffect(()=>{void load();},[month]);
+
+  async function importCsv(file:File){
+    setImporting(true);setMessage("Banki kivonat feldolgozása…");
+    try{
+      const text=await file.text();
+      const transactions=parseBankCsv(text);
+      if(!transactions.length)throw new Error("Nem találtam felismerhető dátum + összeg oszlopokat a CSV-ben.");
+      const res=await fetch("/api/finance/transactions",{
+        method:"POST",headers:{"content-type":"application/json"},
+        body:JSON.stringify({source:file.name.toLowerCase().includes("otp")?"otp-csv":"bank-csv",transactions})
+      });
+      const json=await res.json();
+      if(!res.ok)throw new Error(json.error||"Az import nem sikerült.");
+      setMessage("Import kész: "+json.inserted+" új tranzakció, "+json.skipped+" kihagyva.");
+      await load();
+    }catch(e){setMessage(e instanceof Error?e.message:"Import hiba.");}
+    finally{setImporting(false);if(fileRef.current)fileRef.current.value="";}
+  }
+
+  const income=Number(data?.totals?.income_huf||0);
+  const expense=Number(data?.totals?.expense_huf||0);
+  const balance=income-expense;
+  const slices=(view==="purpose"?data?.categories:data?.merchants)||[];
+  const total=slices.reduce((sum,x)=>sum+Number(x.amount_huf||0),0);
+  const colors=["#3B82F6","#22D3EE","#22C55E","#F59E0B","#8B5CF6","#EF4444","#60A5FA","#64748B"];
+  let cursor=0;
+  const stops=slices.map((x,i)=>{
+    const pct=total?Number(x.amount_huf||0)/total*100:0;
+    const from=cursor;cursor+=pct;
+    return colors[i%colors.length]+" "+from+"% "+cursor+"%";
+  }).join(", ");
+  const monthLabel=new Date(month+"-01T00:00:00").toLocaleDateString("hu-HU",{year:"numeric",month:"long"});
+
+  return <div className="page finance-v3">
     <Header title="Pénzügyek"/>
-    <div className="tabs"><button className="tab on">Áttekintés</button><button className="tab">Tranzakciók</button><button className="tab">Kategóriák</button><button className="tab">Számlák</button></div>
-    <div className="section-title">Havi pénzügyi kép</div>
-    <div className="card finance-empty-summary">
-      <div className="row between"><div><b>Valós tranzakciós adatokra vár</b><div className="label">Banki/import forrás nélkül nem számolunk kitalált bevételt vagy kiadást.</div></div><span className="badge amber">Nincs forrás</span></div>
+    <div className="finance-top-row">
+      <label className="finance-month-picker"><span>Időszak</span><input type="month" value={month} onChange={e=>setMonth(e.target.value)}/></label>
+      <button className="primary-btn compact" disabled={importing} onClick={()=>fileRef.current?.click()}>{importing?"Import…":"＋ Banki CSV import"}</button>
+      <input ref={fileRef} className="sr-only" type="file" accept=".csv,text/csv" onChange={e=>{const file=e.target.files?.[0];if(file)void importCsv(file);}}/>
     </div>
+    {message&&<div className="auth-message">{message}</div>}
+
+    <div className="section-title">{monthLabel} · pénzügyi kép</div>
+    <div className="grid finance-kpis">
+      <div className="card"><div className="label">Beérkezett pénz</div><div className="metric finance-positive">{money(income)}</div><div className="delta">Egyéb bevétel is ide kerül</div></div>
+      <div className="card"><div className="label">Kiadás</div><div className="metric">{money(expense)}</div><div className="delta down">{data?.totals?.count||0} banki tranzakció</div></div>
+      <div className={"card "+(balance>=0?"active":"")}><div className="label">Havi egyenleg</div><div className="metric">{money(balance)}</div><div className="delta">{balance>=0?"Pozitív hónap":"Több kiadás, mint bevétel"}</div></div>
+    </div>
+
     <div className="section-title">Kiadási megoszlás</div>
     <div className="card spending-overview">
       <div className="tabs revenue-view-tabs">
         <button className={"tab "+(view==="purpose"?"on":"")} onClick={()=>setView("purpose")}>Mire költök?</button>
         <button className={"tab "+(view==="merchant"?"on":"")} onClick={()=>setView("merchant")}>Hol költök?</button>
       </div>
-      <div className="spending-empty-layout">
-        <div className={"spending-donut-empty "+(view==="merchant"?"merchant":"")}><div><b>— Ft</b><span>{view==="purpose"?"kategóriák":"kereskedők"}</span></div></div>
-        <div className="spending-empty-copy">
-          <b>{view==="purpose"?"Mire megy el a pénz?":"Hol költöd el?"}</b>
-          <p>{view==="purpose"?"Élelmiszer, üzemanyag, rezsi, előfizetések, autó és egyéb kategóriák aránya kerül ide.":"Lidl, Penny, Tesco, MOL, Shell, gyógyszertárak és más kereskedők aránya kerül ide."}</p>
-          <div className="finance-source-note">A kördiagram automatikusan épül majd a valódi tranzakciókból, kézi százalékok nélkül.</div>
+      {loading?<div className="nav-loading"><div className="security-v2-loader"/><span>Tranzakciók betöltése…</span></div>:
+      slices.length===0?<div className="spending-empty-layout">
+        <div className={"spending-donut-empty "+(view==="merchant"?"merchant":"")}><div><b>— Ft</b><span>nincs adat</span></div></div>
+        <div className="spending-empty-copy"><b>Még nincs banki tranzakció</b><p>Importálj egy OTP/banki CSV kivonatot. A rendszer automatikusan szétbontja kategóriákra és kereskedőkre.</p></div>
+      </div>:
+      <div className="revenue-share-layout">
+        <div className="revenue-donut" style={{background:"conic-gradient("+(stops||"#243044 0 100%")+")"}}>
+          <div className="revenue-donut-hole"><b>{money(total)}</b><span>{view==="purpose"?"kiadás":"elköltve"}</span></div>
         </div>
-      </div>
+        <div className="revenue-legend">{slices.slice(0,8).map((x,i)=>{
+          const pct=total?Math.round(Number(x.amount_huf||0)/total*100):0;
+          return <div className="revenue-legend-row" key={x.name}><span className="revenue-swatch" style={{background:colors[i%colors.length]}}/><b>{x.name}</b><span>{money(x.amount_huf)}</span><small>{pct}% · {x.count} db</small></div>
+        })}</div>
+      </div>}
+    </div>
+
+    <div className="section-title">Bevételek</div>
+    <div className="card finance-income-list">
+      {(data?.incomeBreakdown||[]).length===0?<div className="label">Ebben a hónapban nincs beérkező banki tranzakció.</div>:(data?.incomeBreakdown||[]).map(x=><div className="row between finance-income-row" key={x.name}><div><b>{x.name}</b><div className="label">{x.count} tranzakció</div></div><b className="finance-positive">+{money(x.amount_huf)}</b></div>)}
+    </div>
+
+    <div className="section-title">Legutóbbi tranzakciók</div>
+    <div className="card finance-transactions-scroll">
+      {(data?.transactions||[]).length===0?<div className="label">Még nincs importált tranzakció ebben a hónapban.</div>:(data?.transactions||[]).map(tx=><div className="finance-transaction-row" key={tx.id}>
+        <div className="grow"><b>{tx.merchant||tx.description||"Banki tranzakció"}</b><div className="label">{new Date(tx.booked_at+"T00:00:00").toLocaleDateString("hu-HU")} · {tx.category||"Egyéb"}</div></div>
+        <b className={Number(tx.amount_huf)>0?"finance-positive":"finance-negative"}>{Number(tx.amount_huf)>0?"+":""}{money(tx.amount_huf)}</b>
+      </div>)}
+    </div>
+
+    <div className="card finance-bank-note">
+      <div className="row"><Icon>N</Icon><div><b>Automatikus OTP kapcsolat</b><div className="label">Az adatmodell kész az élő bankkapcsolathoz. Produkciós OTP PSD2 hozzáféréshez engedélyezett Open Banking/TPP kapcsolat szükséges; banki jelszót nem tárolunk.</div></div></div>
     </div>
   </div>
 }
