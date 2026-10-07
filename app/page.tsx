@@ -603,7 +603,10 @@ function Docs({cardOnly=false}:{cardOnly?:boolean}={}) {
 
     <div className="row between docs-section-head">
       <div><div className="section-title" style={{margin:0}}>{cardOnly?"Kártyatárca":"Digitális irattartó"}</div><div className="label">{selected?selected.display_name+" · "+(selected.relation||"Családtag"):"Családi tér"}</div></div>
-      <button className="primary-btn" disabled={!personId} onClick={()=>setShowForm(true)}>＋ {cardOnly?"Új kártya":"Új irat"}</button>
+      <div className="row">
+        {!cardOnly&&<><button className="ghost-btn" disabled={!personId||packageImporting} onClick={()=>packageRef.current?.click()}>{packageImporting?"Import…":"⇧ Iratcsomag"}</button><input ref={packageRef} className="sr-only" type="file" accept=".zip,application/zip" onChange={e=>{const file=e.target.files?.[0];if(file)void importPreparedPackage(file);e.currentTarget.value="";}}/></>}
+        <button className="primary-btn" disabled={!personId} onClick={()=>setShowForm(true)}>＋ {cardOnly?"Új kártya":"Új irat"}</button>
+      </div>
     </div>
 
     <div className="docs-toolbar card">
@@ -658,23 +661,28 @@ function Docs({cardOnly=false}:{cardOnly?:boolean}={}) {
 
     {cropTarget&&<div className="scanner-overlay">
       <div className="scanner-shell">
-        <div className="row between scanner-head"><div><b>Dokumentum körbevágása</b><div className="label">Igazítsd a négy szélét a kerethez</div></div><button className="ghost-btn" onClick={()=>setCropTarget(null)}>Mégse</button></div>
-        <div className={"scanner-stage "+(cardVisualKinds.has(kind)?"card-scan":"paper-scan")}>
-          <Cropper
-            image={cropImageUrl}
-            crop={cropPos}
-            zoom={cropZoom}
-            aspect={cardVisualKinds.has(kind)?1.586:1/1.414}
-            onCropChange={setCropPos}
-            onZoomChange={setCropZoom}
-            onCropComplete={(_,pixels)=>setCropPixels(pixels)}
-            showGrid
-          />
-          <div className="scanner-corners" aria-hidden="true"><i/><i/><i/><i/></div>
+        <div className="row between scanner-head"><div><b>Négy sarok beállítása</b><div className="label">Húzd a 4 pontot pontosan az irat sarkaira</div></div><button className="ghost-btn" onClick={()=>setCropTarget(null)}>Mégse</button></div>
+        <div className="scanner-stage four-corner-stage"
+          onPointerMove={e=>{
+            if(dragCorner===null)return;
+            const rect=e.currentTarget.getBoundingClientRect();
+            const x=Math.max(0,Math.min(1,(e.clientX-rect.left)/rect.width));
+            const y=Math.max(0,Math.min(1,(e.clientY-rect.top)/rect.height));
+            setScanCorners(points=>points.map((p,i)=>i===dragCorner?{x,y}:p));
+          }}
+          onPointerUp={()=>setDragCorner(null)}
+          onPointerCancel={()=>setDragCorner(null)}
+          onPointerLeave={()=>setDragCorner(null)}
+        >
+          <img src={cropImageUrl} alt="Körbevágandó irat"/>
+          <svg className="scan-polygon" viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-hidden="true">
+            <polygon points={scanCorners.map(p=>(p.x*1000)+","+(p.y*1000)).join(" ")}/>
+          </svg>
+          {scanCorners.map((p,i)=><button key={i} className="scan-handle" style={{left:(p.x*100)+"%",top:(p.y*100)+"%"}} onPointerDown={e=>{e.currentTarget.setPointerCapture(e.pointerId);setDragCorner(i);}} aria-label={(i+1)+". sarok"}>{i+1}</button>)}
         </div>
         <div className="scanner-controls">
-          <label><span>Zoom</span><input type="range" min="1" max="3" step="0.01" value={cropZoom} onChange={e=>setCropZoom(Number(e.target.value))}/></label>
-          <button className="primary-btn" onClick={acceptCrop}>✓ Kivágás mentése</button>
+          <button className="ghost-btn" onClick={()=>setScanCorners([{x:.06,y:.06},{x:.94,y:.06},{x:.94,y:.94},{x:.06,y:.94}])}>Alaphelyzet</button>
+          <button className="primary-btn" onClick={acceptCrop}>✓ Kivágás és kiegyenesítés</button>
         </div>
       </div>
     </div>}
@@ -711,6 +719,7 @@ function Docs({cardOnly=false}:{cardOnly?:boolean}={}) {
                 </div>
                 <div className="document-actions">
                   <button className="ghost-btn" onClick={()=>window.open(photo.imageUrl,"_blank")}>Teljes méret</button>
+                  <button className="ghost-btn" onClick={()=>setPrintDoc(doc)}>PDF / Nyomtatás</button>
                 </div>
               </div>:null;
             })()}
@@ -726,6 +735,18 @@ function Docs({cardOnly=false}:{cardOnly?:boolean}={}) {
           </div>}
         </article>;
       })}
+    </div>}
+
+    {printDoc&&<div className="print-modal-overlay">
+      <div className="card print-modal">
+        <div className="row between"><div><b>PDF / nyomtatás</b><div className="label">{printDoc.title}</div></div><button className="ghost-btn" onClick={()=>setPrintDoc(null)}>Bezárás</button></div>
+        <div className="print-choice-grid">
+          {printDoc.pages?.[0]&&<button onClick={async()=>{await createDocumentPdf(printDoc.pages,printDoc.title,cardVisualKinds.has(printDoc.kind),[0]);setPrintDoc(null);}}>Előlap</button>}
+          {printDoc.pages?.[1]&&<button onClick={async()=>{await createDocumentPdf(printDoc.pages,printDoc.title,cardVisualKinds.has(printDoc.kind),[1]);setPrintDoc(null);}}>Hátlap</button>}
+          {(printDoc.pages?.length||0)>1&&<button onClick={async()=>{await createDocumentPdf(printDoc.pages,printDoc.title,cardVisualKinds.has(printDoc.kind),printDoc.pages.map((_,i)=>i));setPrintDoc(null);}}>Összes oldal</button>}
+        </div>
+        <div className="finance-source-note">Kártyatípusnál a PDF az A4 lap közepére kb. 85,6 × 53,98 mm méretben teszi az iratot. Az iPhone megosztómenüjéből választható a Nyomtatás.</div>
+      </div>
     </div>}
   </div>
 }
