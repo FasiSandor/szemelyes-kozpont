@@ -415,6 +415,11 @@ function parseBankCsv(text:string){
   }).filter(x=>x.bookedAt&&x.amountHuf!==0);
 }
 
+type BankConnectionState={
+  configured:boolean;
+  connection?:{status:string;account_ids?:string[];last_sync_at?:string|null;last_error?:string|null}|null;
+};
+
 function Finance() {
   const now=new Date();
   const [month,setMonth]=useState(now.toISOString().slice(0,7));
@@ -423,6 +428,9 @@ function Finance() {
   const [loading,setLoading]=useState(true);
   const [importing,setImporting]=useState(false);
   const [message,setMessage]=useState("");
+  const [bank,setBank]=useState<BankConnectionState|null>(null);
+  const [bankBusy,setBankBusy]=useState(false);
+  const autoSyncRef=useRef(false);
   const fileRef=useRef<HTMLInputElement>(null);
 
   async function load(){
@@ -435,7 +443,40 @@ function Finance() {
     }catch(e){setMessage(e instanceof Error?e.message:"Betöltési hiba.");}
     finally{setLoading(false);}
   }
+  async function loadBank(){
+    try{
+      const res=await fetch("/api/finance/openbanking",{cache:"no-store"});
+      const json=await res.json();
+      if(res.ok)setBank(json);
+    }catch{}
+  }
   useEffect(()=>{void load();},[month]);
+  useEffect(()=>{void loadBank();},[]);
+
+  async function connectBank(){
+    setBankBusy(true);setMessage("OTP kapcsolat indítása…");
+    try{
+      const res=await fetch("/api/finance/openbanking",{method:"POST"});
+      const json=await res.json();
+      if(!res.ok)throw new Error(json.error||"Nem sikerült elindítani az OTP kapcsolatot.");
+      window.location.href=json.link;
+    }catch(e){
+      setMessage(e instanceof Error?e.message:"OTP kapcsolat hiba.");
+      setBankBusy(false);
+    }
+  }
+
+  async function syncBank(silent=false){
+    setBankBusy(true);if(!silent)setMessage("OTP tranzakciók frissítése…");
+    try{
+      const res=await fetch("/api/finance/openbanking/sync",{method:"POST"});
+      const json=await res.json();
+      if(!res.ok)throw new Error(json.error||"A banki szinkron nem sikerült.");
+      if(!silent)setMessage("OTP szinkron kész: "+json.inserted+" új tranzakció.");
+      await Promise.all([load(),loadBank()]);
+    }catch(e){setMessage(e instanceof Error?e.message:"OTP szinkron hiba.");}
+    finally{setBankBusy(false);}
+  }
 
   async function importCsv(file:File){
     setImporting(true);setMessage("Banki kivonat feldolgozása…");
@@ -455,6 +496,16 @@ function Finance() {
     finally{setImporting(false);if(fileRef.current)fileRef.current.value="";}
   }
 
+  useEffect(()=>{
+    const connection=bank?.connection;
+    const linkedNow=connection?.status==="LN"||Boolean(connection?.account_ids?.length);
+    if(!linkedNow||autoSyncRef.current||bankBusy)return;
+    const last=connection?.last_sync_at?new Date(connection.last_sync_at).getTime():0;
+    if(last&&Date.now()-last<6*60*60*1000)return;
+    autoSyncRef.current=true;
+    void syncBank(true);
+  },[bank?.connection?.status,bank?.connection?.last_sync_at]);
+
   const income=Number(data?.totals?.income_huf||0);
   const expense=Number(data?.totals?.expense_huf||0);
   const balance=income-expense;
@@ -469,8 +520,23 @@ function Finance() {
   }).join(", ");
   const monthLabel=new Date(month+"-01T00:00:00").toLocaleDateString("hu-HU",{year:"numeric",month:"long"});
 
+  const linked=bank?.connection?.status==="LN"||Boolean(bank?.connection?.account_ids?.length);
+  const lastSync=bank?.connection?.last_sync_at?new Date(bank.connection.last_sync_at).toLocaleString("hu-HU"):null;
+
   return <div className="page finance-v3">
     <Header title="Pénzügyek"/>
+    <div className={"card openbanking-card "+(linked?"active":"")}>
+      <div className="row between openbanking-head">
+        <div className="row"><Icon tone={linked?"green":""}>O</Icon><div><b>OTP automatikus kapcsolat</b><div className="label">{linked?"Kapcsolva · a költések és bevételek automatikusan frissíthetők":bank?.configured?"Biztonságos Open Banking kapcsolat":"Open Banking kulcsok beállítása szükséges"}</div></div></div>
+        <span className={"badge "+(linked?"green":"amber")}>{linked?"Kapcsolva":"Nincs kapcsolat"}</span>
+      </div>
+      <div className="openbanking-actions">
+        {!linked?<button className="primary-btn" disabled={bankBusy||!bank?.configured} onClick={()=>void connectBank()}>{bankBusy?"Kapcsolódás…":"OTP összekapcsolása"}</button>:
+        <button className="primary-btn" disabled={bankBusy} onClick={()=>void syncBank(false)}>{bankBusy?"Frissítés…":"↻ OTP frissítés"}</button>}
+        {lastSync&&<span className="label">Utolsó szinkron: {lastSync}</span>}
+      </div>
+    </div>
+
     <div className="finance-top-row">
       <label className="finance-month-picker"><span>Időszak</span><input type="month" value={month} onChange={e=>setMonth(e.target.value)}/></label>
       <button className="primary-btn compact" disabled={importing} onClick={()=>fileRef.current?.click()}>{importing?"Import…":"＋ Banki CSV import"}</button>
@@ -494,7 +560,7 @@ function Finance() {
       {loading?<div className="nav-loading"><div className="security-v2-loader"/><span>Tranzakciók betöltése…</span></div>:
       slices.length===0?<div className="spending-empty-layout">
         <div className={"spending-donut-empty "+(view==="merchant"?"merchant":"")}><div><b>— Ft</b><span>nincs adat</span></div></div>
-        <div className="spending-empty-copy"><b>Még nincs banki tranzakció</b><p>Importálj egy OTP/banki CSV kivonatot. A rendszer automatikusan szétbontja kategóriákra és kereskedőkre.</p></div>
+        <div className="spending-empty-copy"><b>Még nincs banki tranzakció</b><p>{linked?"Nyomj egy OTP frissítést, és a tranzakciók automatikusan ide kerülnek.":"Kapcsold össze az OTP-t, vagy tartalékként importálj banki CSV kivonatot."}</p></div>
       </div>:
       <div className="revenue-share-layout">
         <div className="revenue-donut" style={{background:"conic-gradient("+(stops||"#243044 0 100%")+")"}}>
@@ -521,7 +587,7 @@ function Finance() {
     </div>
 
     <div className="card finance-bank-note">
-      <div className="row"><Icon>N</Icon><div><b>Automatikus OTP kapcsolat</b><div className="label">Az adatmodell kész az élő bankkapcsolathoz. Produkciós OTP PSD2 hozzáféréshez engedélyezett Open Banking/TPP kapcsolat szükséges; banki jelszót nem tárolunk.</div></div></div>
+      <div className="row"><Icon>N</Icon><div><b>Biztonságos bankkapcsolat</b><div className="label">Az engedélyezés az OTP saját felületén történik. Az app csak olvasási jogosultságot kap; OTP-jelszót nem tárolunk. A CSV import tartalék lehetőség marad.</div></div></div>
     </div>
   </div>
 }
@@ -1251,6 +1317,14 @@ function More({go}:{go:(s:Screen)=>void}){
 }
 export default function Page(){
  const [screen,setScreen]=useState<Screen>("home");
+ useEffect(()=>{
+  const params=new URLSearchParams(window.location.search);
+  if(params.get("open")==="finance"){
+    setScreen("finance");
+    const bank=params.get("bank");
+    if(bank)window.history.replaceState({},document.title,window.location.pathname);
+  }
+ },[]);
  useEffect(()=>{window.scrollTo({top:0,behavior:"auto"});},[screen]);
  const content=useMemo(()=>{
   switch(screen){
