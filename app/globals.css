@@ -380,7 +380,7 @@ button.list-item{cursor:pointer}.list-item:active{transform:scale(.992);border-c
 .doc-upload.ready .doc-upload-icon{color:#4ADE80;border-color:rgba(34,197,94,.38);background:rgba(34,197,94,.10);box-shadow:0 0 15px rgba(34,197,94,.10)}
 .doc-photo-stack{position:relative;min-height:145px}
 .doc-photo-stack .photo-wrap{display:block;width:100%;border:1px solid rgba(72,93,125,.76);padding:0;cursor:pointer;position:relative;overflow:hidden}
-.doc-photo-stack .photo-wrap span{position:absolute;left:8px;bottom:7px;padding:4px 7px;border-radius:999px;background:rgba(7,14,24,.78);backdrop-filter:blur(8px);font-size:9px;color:#BFDBFE;border:1px solid rgba(96,165,250,.25)}
+.doc-photo-stack .photo-wrap span{position:absolute;left:8px;bottom:7px;padding:4px 7px;border-radius:999px;background:rgba(7,14,24,.78);backdrop-filter:blur(4px);font-size:9px;color:#BFDBFE;border:1px solid rgba(96,165,250,.25)}
 .doc-photo-stack .photo-wrap.back{position:absolute;width:42%;right:8px;bottom:-2px;aspect-ratio:1.58;border-color:rgba(34,211,238,.48);box-shadow:0 8px 22px rgba(0,0,0,.34),0 0 14px rgba(34,211,238,.08);transform:rotate(1.5deg)}
 .doc-photo-stack .photo-wrap.back span{left:5px;bottom:5px;padding:3px 5px}
 .doc-photo-stack .photo-wrap.missing{display:grid;place-items:center;color:#64748B;background:#0C1523}
@@ -687,7 +687,7 @@ html:not([data-money-visible="true"]) .nav-invoice-center .nav-invoice-row b:las
 html:not([data-money-visible="true"]) .nav-invoice-center .analytics-year-row b,
 html:not([data-money-visible="true"]) .nav-invoice-center .analytics-rank-row small,
 html:not([data-money-visible="true"]) .nav-invoice-center .payment-row small{
-  filter:blur(8px);
+  filter:blur(4px);
   user-select:none;
   transition:filter .18s ease;
 }
