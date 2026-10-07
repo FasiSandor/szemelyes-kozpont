@@ -21,45 +21,13 @@ const docs=[
 function Icon({children,tone=""}:{children:React.ReactNode;tone?:string}) {
   return <div className={"icon "+tone}>{children}</div>
 }
-function PrivacyToggle(){
-  const [revealed,setRevealed]=useState(false);
-  const timerRef=useRef<number|null>(null);
-
-  function hide(){
-    document.documentElement.removeAttribute("data-money-visible");
-    setRevealed(false);
-    if(timerRef.current!==null){window.clearTimeout(timerRef.current);timerRef.current=null;}
-  }
-  function toggle(){
-    if(revealed){hide();return;}
-    document.documentElement.setAttribute("data-money-visible","true");
-    setRevealed(true);
-    if(timerRef.current!==null)window.clearTimeout(timerRef.current);
-    timerRef.current=window.setTimeout(()=>hide(),60000);
-  }
-
-  useEffect(()=>{
-    hide();
-    const onVisibility=()=>{if(document.hidden)hide();};
-    const onBlur=()=>hide();
-    document.addEventListener("visibilitychange",onVisibility);
-    window.addEventListener("blur",onBlur);
-    return()=>{
-      document.removeEventListener("visibilitychange",onVisibility);
-      window.removeEventListener("blur",onBlur);
-      if(timerRef.current!==null)window.clearTimeout(timerRef.current);
-    };
-  },[]);
-
-  return <button className={"privacy-toggle "+(revealed?"on":"")} onClick={toggle} aria-label={revealed?"Pénzügyi adatok elrejtése":"Pénzügyi adatok megjelenítése"} title={revealed?"Elrejtés":"Pénzügyi adatok megjelenítése"}>{revealed?"◉":"◌"}</button>;
-}
 function Header({title="Személyes Központ",back,onBack}:{title?:string;back?:boolean;onBack?:()=>void}) {
   return <div className="topbar">
     <div className="row">
       {back && <button className="ghost-btn" onClick={onBack} aria-label="Vissza">‹</button>}
       <div><div className="eyebrow">2026. október 6.</div><div className="title">{title}</div></div>
     </div>
-    <div className="row header-actions"><PrivacyToggle/><div className="avatar">SK</div></div>
+    <div className="avatar">SK</div>
   </div>
 }
 function BottomNav({screen,setScreen}:{screen:Screen;setScreen:(s:Screen)=>void}) {
@@ -418,6 +386,7 @@ type FinanceData={
   categories?:FinanceSlice[];
   merchants?:FinanceSlice[];
   incomeBreakdown?:FinanceSlice[];
+  availableMonths?:{month:string;count:number}[];
 };
 
 function normalizeCsvHeader(value:string){
@@ -596,8 +565,32 @@ function Finance() {
       </div>
     </div>
 
-    <div className="finance-top-row">
-      <label className="finance-month-picker"><span>Időszak</span><input type="month" value={month} onChange={e=>setMonth(e.target.value)}/></label>
+    <div className="finance-period card">
+      <div className="row between"><div><b>Időszak</b><div className="label">{monthLabel}</div></div><span className="badge">{data?.totals?.count||0} tranzakció</span></div>
+      {(()=>{
+        const available=(data?.availableMonths||[]).map(x=>x.month);
+        const years=Array.from(new Set(available.map(x=>x.slice(0,4)))).sort((a,b)=>Number(b)-Number(a));
+        const selectedYear=month.slice(0,4);
+        const monthNames=["Jan","Feb","Már","Ápr","Máj","Jún","Júl","Aug","Szept","Okt","Nov","Dec"];
+        const monthsForYear=available.filter(x=>x.startsWith(selectedYear+"-"));
+        return <>
+          <div className="chips finance-year-chips">
+            {(years.length?years:[selectedYear]).map(y=><button key={y} className={"chip "+(selectedYear===y?"on":"")} onClick={()=>{
+              const candidate=available.find(x=>x.startsWith(y+"-"));
+              if(candidate)setMonth(candidate);
+            }}>{y}</button>)}
+          </div>
+          <div className="finance-month-grid">
+            {monthsForYear.map(m=>{
+              const n=Number(m.slice(5,7));
+              const c=data?.availableMonths?.find(x=>x.month===m)?.count||0;
+              return <button key={m} className={month===m?"on":""} onClick={()=>setMonth(m)}>{monthNames[n-1]} <small>{c}</small></button>
+            })}
+          </div>
+        </>;
+      })()}
+    </div>
+    <div className="finance-top-row finance-import-row">
       <button className="primary-btn compact" disabled={importing} onClick={()=>fileRef.current?.click()}>{importing?"Import…":"＋ Banki CSV import"}</button>
       <input ref={fileRef} className="sr-only" type="file" accept=".csv,text/csv" onChange={e=>{const file=e.target.files?.[0];if(file)void importCsv(file);}}/>
     </div>
