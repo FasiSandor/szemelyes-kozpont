@@ -650,12 +650,10 @@ textarea.input{resize:vertical;min-height:62px;padding-top:11px}
 
 /* ---------- MOBILE HORIZONTAL OVERFLOW GUARD ---------- */
 html,body{max-width:100%;overflow-x:hidden}
-.app,.shell,.page{max-width:100%;overflow-x:clip}
+.app,.shell,.page{max-width:100%}
 .row>*{min-width:0}
 .card,.finance-v3,.openbanking-card,.finance-top-row{max-width:100%}
-.finance-month-picker,.finance-month-picker input{min-width:0;max-width:100%}
 .finance-transaction-row .grow,.openbanking-head .row>div{min-width:0;max-width:100%}
-
 
 /* ---------- HOME LIVE FINANCE DONUTS ---------- */
 .home-real-donut{width:64px;height:64px;flex:0 0 64px;border-radius:50%;display:grid;place-items:center;position:relative;box-shadow:0 0 18px rgba(59,130,246,.14)}
@@ -663,47 +661,18 @@ html,body{max-width:100%;overflow-x:hidden}
 .home-real-donut span{position:relative;z-index:1;font-size:8px;font-weight:800;color:#E5EEF9;text-align:center;max-width:42px;line-height:1.1}
 
 
-/* ---------- PRIVACY MODE ---------- */
-.privacy-toggle{
-  width:42px;height:42px;border-radius:14px;border:1px solid rgba(96,165,250,.34);
-  background:linear-gradient(160deg,#111827,#0B1320);color:#93C5FD;
-  display:grid;place-items:center;font-size:22px;cursor:pointer;
-  box-shadow:0 0 16px rgba(59,130,246,.10)
-}
-.privacy-toggle.on{color:#67E8F9;border-color:rgba(34,211,238,.52);box-shadow:0 0 20px rgba(34,211,238,.14)}
-.header-actions{gap:8px}
+/* ---------- FINANCE PERIOD SWITCHER ---------- */
+.finance-period{display:grid;gap:12px;margin-top:12px}
+.finance-year-chips{margin:0}
+.finance-month-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.finance-month-grid button{border:1px solid #30415A;background:#0E1725;color:#94A3B8;border-radius:11px;padding:10px 6px;font-size:11px;font-weight:750}
+.finance-month-grid button small{font-size:8px;color:#64748B;margin-left:3px}
+.finance-month-grid button.on{color:#fff;border-color:#60A5FA;background:linear-gradient(180deg,#3B82F6,#2563EB);box-shadow:0 0 16px rgba(59,130,246,.18)}
+.finance-month-grid button.on small{color:#E0F2FE}
+.finance-import-row{margin-top:10px}
+@media(max-width:430px){.finance-month-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
 
-/* sensitive values stay blurred by default */
-html:not([data-money-visible="true"]) .finance-v3 .metric,
-html:not([data-money-visible="true"]) .finance-v3 .revenue-donut-hole b,
-html:not([data-money-visible="true"]) .finance-v3 .revenue-legend-row>span:nth-of-type(2),
-html:not([data-money-visible="true"]) .finance-v3 .finance-income-row>b,
-html:not([data-money-visible="true"]) .finance-v3 .finance-transaction-row>b,
-html:not([data-money-visible="true"]) .home-v2 .home-overview-grid .home-overview-card:nth-child(-n+2) .metric,
-html:not([data-money-visible="true"]) .home-v2 .home-real-donut span,
-html:not([data-money-visible="true"]) .nav-invoice-center .metric,
-html:not([data-money-visible="true"]) .nav-invoice-center .revenue-donut-hole b,
-html:not([data-money-visible="true"]) .nav-invoice-center .nav-invoice-row b:last-child,
-html:not([data-money-visible="true"]) .nav-invoice-center .analytics-year-row b,
-html:not([data-money-visible="true"]) .nav-invoice-center .analytics-rank-row small,
-html:not([data-money-visible="true"]) .nav-invoice-center .payment-row small{
-  filter:blur(4px);
-  user-select:none;
-  transition:filter .18s ease;
-}
-
-/* donut center readability */
-.home-real-donut{
-  width:70px!important;height:70px!important;flex:0 0 70px!important;
-  border-radius:50%!important;display:grid!important;place-items:center!important;
-  position:relative!important;overflow:hidden!important
-}
-.home-real-donut:after{
-  content:"";position:absolute!important;inset:12px!important;border-radius:50%!important;
-  background:linear-gradient(155deg,#111827,#0B0F14)!important;
-  border:1px solid #2A3445!important;z-index:0!important
-}
-.home-real-donut span{
-  position:relative!important;z-index:1!important;font-size:8px!important;font-weight:800!important;
-  color:#E5EEF9!important;text-align:center!important;max-width:44px!important;line-height:1.05!important
-}
+/* ---------- UPCOMING COMBINED FEED ---------- */
+.home-upcoming-list{max-height:240px;overflow-y:auto;overscroll-behavior:contain;padding-right:2px;scrollbar-width:thin;scrollbar-color:#3B82F6 transparent}
+.home-upcoming-list::-webkit-scrollbar{width:4px}
+.home-upcoming-list::-webkit-scrollbar-thumb{background:#3B82F6;border-radius:99px}
