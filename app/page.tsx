@@ -272,37 +272,46 @@ async function imageUrlToDataUrl(url:string){
 }
 
 
-type A4PrintItem={imageUrl:string;title:string;label:string;isCard:boolean};
 
-function a4CardPlacement(index:number){
-  const col=index%2,row=Math.floor(index/2)%4;
-  return {x:14+col*96,y:16+row*64,w:85.6,h:53.98};
+type A4PrintItem={imageUrl:string;title:string;label:string;isCard:boolean};
+type A4PlacedItem=A4PrintItem&{sheet:number;x:number;y:number;w:number;h:number};
+
+function layoutA4Items(items:A4PrintItem[]){
+  const placed:A4PlacedItem[]=[];
+  let sheet=0,cardSlot=0,hasAnything=false;
+  for(const item of items){
+    if(item.isCard){
+      if(cardSlot>=8){sheet++;cardSlot=0;hasAnything=false;}
+      const col=cardSlot%2,row=Math.floor(cardSlot/2);
+      placed.push({...item,sheet,x:14+col*96,y:16+row*64,w:85.6,h:53.98});
+      cardSlot++;hasAnything=true;
+    }else{
+      if(hasAnything){sheet++;cardSlot=0;}
+      placed.push({...item,sheet,x:15,y:18,w:180,h:254});
+      sheet++;cardSlot=0;hasAnything=false;
+    }
+  }
+  const sheets=Math.max(1,placed.length?Math.max(...placed.map(x=>x.sheet))+1:1);
+  return {placed,sheets};
 }
 
 async function createA4PrintPdf(items:A4PrintItem[],title:string){
-  if(!items.length)return;
+  if(!items.length)return null;
   const {jsPDF}=await import("jspdf");
+  const layout=layoutA4Items(items);
   const pdf=new jsPDF({unit:"mm",format:"a4",orientation:"portrait"});
-  let pageStarted=false;
-  let cardSlot=0;
-  for(let i=0;i<items.length;i++){
-    const item=items[i];
+  let currentSheet=0;
+  for(const item of layout.placed){
+    while(currentSheet<item.sheet){pdf.addPage();currentSheet++;}
+    const data=await imageUrlToDataUrl(item.imageUrl);
     if(item.isCard){
-      if(cardSlot>0&&cardSlot%8===0){pdf.addPage();pageStarted=true;}
-      const slot=cardSlot%8;
-      const pos=a4CardPlacement(slot);
-      const data=await imageUrlToDataUrl(item.imageUrl);
-      pdf.addImage(data,"JPEG",pos.x,pos.y,pos.w,pos.h,undefined,"FAST");
-      cardSlot++;
+      pdf.addImage(data,"JPEG",item.x,item.y,item.w,item.h,undefined,"FAST");
     }else{
-      if(pageStarted||cardSlot>0){pdf.addPage();cardSlot=0;}
-      const data=await imageUrlToDataUrl(item.imageUrl);
       const img=new Image();
       await new Promise<void>((resolve,reject)=>{img.onload=()=>resolve();img.onerror=reject;img.src=data;});
       const ratio=img.naturalWidth/img.naturalHeight;
-      let w=180,h=w/ratio;if(h>257){h=257;w=h*ratio;}
+      let w=180,h=w/ratio;if(h>254){h=254;w=h*ratio;}
       pdf.addImage(data,"JPEG",(210-w)/2,18,w,h,undefined,"FAST");
-      pageStarted=true;
     }
   }
   return pdf.output("blob");
