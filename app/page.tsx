@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createVault, getLocalVaultPayload, saveVault, setLocalVaultPayload, unlockVault, vaultExists, type StoredVault, type VaultEntry } from "@/lib/vault";
 import SecureGate from "@/components/SecureGate";
 import QRCode from "react-qr-code";
+import Cropper, { type Area } from "react-easy-crop";
 
 type Screen = "home" | "docs" | "finance" | "tasks" | "more" | "business" | "nav" | "vault" | "cards" | "vehicles" | "reports";
 
@@ -177,6 +178,44 @@ function Home({go}:{go:(s:Screen)=>void}) {
     </div>
   </div>
 }
+
+async function cropFileToArea(file:File,area:Area){
+  const url=URL.createObjectURL(file);
+  try{
+    const image=await new Promise<HTMLImageElement>((resolve,reject)=>{
+      const img=new Image();
+      img.onload=()=>resolve(img);img.onerror=reject;img.src=url;
+    });
+    const canvas=document.createElement("canvas");
+    canvas.width=Math.max(1,Math.round(area.width));
+    canvas.height=Math.max(1,Math.round(area.height));
+    const ctx=canvas.getContext("2d");
+    if(!ctx)throw new Error("A kép kivágása nem sikerült.");
+    ctx.drawImage(image,area.x,area.y,area.width,area.height,0,0,canvas.width,canvas.height);
+    const blob=await new Promise<Blob>((resolve,reject)=>canvas.toBlob(b=>b?resolve(b):reject(new Error("A kép mentése nem sikerült.")),"image/jpeg",0.94));
+    return new File([blob],file.name.replace(/\.[^.]+$/,"")+"_scan.jpg",{type:"image/jpeg"});
+  }finally{URL.revokeObjectURL(url);}
+}
+
+function printImagePage(url:string,title:string,isCard:boolean){
+  const w=window.open("","_blank","noopener,noreferrer");
+  if(!w)return;
+  const size=isCard?"width:85.6mm;height:53.98mm;object-fit:contain;":"max-width:190mm;max-height:270mm;object-fit:contain;";
+  w.document.write('<!doctype html><html><head><title>'+title+'</title><style>@page{margin:10mm}body{margin:0;display:grid;place-items:center;min-height:100vh;background:#fff}.print-img{'+size+'}</style></head><body><img class="print-img" src="'+url.replace(/"/g,"&quot;")+'"></body></html>');
+  w.document.close();
+  w.focus();
+  setTimeout(()=>w.print(),450);
+}
+
+function printDocumentSet(pages:{imageUrl:string}[],title:string,isCard:boolean){
+  const w=window.open("","_blank","noopener,noreferrer");
+  if(!w)return;
+  const size=isCard?"width:85.6mm;height:53.98mm;object-fit:contain;":"max-width:190mm;max-height:270mm;object-fit:contain;";
+  const body=pages.map((p,i)=>'<section class="sheet"><img class="print-img" src="'+p.imageUrl.replace(/"/g,"&quot;")+'"><small>'+(i+1)+'. oldal</small></section>').join("");
+  w.document.write('<!doctype html><html><head><title>'+title+'</title><style>@page{margin:10mm}.sheet{break-after:page;min-height:270mm;display:grid;place-items:center;align-content:center;gap:5mm}.sheet:last-child{break-after:auto}.print-img{'+size+'}small{font:11px sans-serif;color:#555}</style></head><body>'+body+'</body></html>');
+  w.document.close();w.focus();setTimeout(()=>w.print(),550);
+}
+
 function Docs({cardOnly=false}:{cardOnly?:boolean}={}) {
   type RemoteMember={id:string;display_name:string;relation:string|null;linked_user_id:string|null};
   type DocPhoto={id:string;imageUrl:string;storageKey:string;pageIndex:number;side:string};
