@@ -234,6 +234,13 @@ function Docs({cardOnly=false}:{cardOnly?:boolean}={}) {
     ["shopping_card","Bevásárlókártya"],["other","Egyéb irat"]
   ] as const;
   const cardKinds=new Set(["bank_card","loyalty_card","membership_card","shopping_card"]);
+  const cardVisualKinds=new Set(["identity","address","tax","health","student","teacher","bank_card","loyalty_card","membership_card","shopping_card"]);
+  const dateOnly=(value:string|null|undefined)=>value?String(value).slice(0,10):"";
+  const formatDocDate=(value:string|null|undefined)=>{
+    const d=dateOnly(value);if(!d)return "Nincs megadva";
+    const parsed=new Date(d+"T00:00:00");
+    return Number.isNaN(parsed.getTime())?"Nincs megadva":parsed.toLocaleDateString("hu-HU");
+  };
 
   const [family,setFamily]=useState<RemoteMember[]>([]);
   const [personId,setPersonId]=useState("");
@@ -256,6 +263,11 @@ function Docs({cardOnly=false}:{cardOnly?:boolean}={}) {
   const [last4,setLast4]=useState("");
   const [codeValue,setCodeValue]=useState("");
   const [codeType,setCodeType]=useState<"qr"|"barcode">("qr");
+  const [cropTarget,setCropTarget]=useState<{slot:"front"|"back"|"extra";file:File;extraIndex?:number}|null>(null);
+  const [cropPos,setCropPos]=useState({x:0,y:0});
+  const [cropZoom,setCropZoom]=useState(1);
+  const [cropPixels,setCropPixels]=useState<Area|null>(null);
+  const [pageByDoc,setPageByDoc]=useState<Record<string,number>>({});
   const frontRef=useRef<HTMLInputElement>(null);
   const backRef=useRef<HTMLInputElement>(null);
   const extraRef=useRef<HTMLInputElement>(null);
@@ -330,6 +342,44 @@ function Docs({cardOnly=false}:{cardOnly?:boolean}={}) {
     return prep.documentGroupId as string;
   }
 
+
+  function chooseForScan(file:File|null,slot:"front"|"back"|"extra",extraIndex?:number){
+    if(!file)return;
+    setCropPos({x:0,y:0});setCropZoom(1);setCropPixels(null);
+    setCropTarget({slot,file,extraIndex});
+  }
+
+  async function acceptCrop(){
+    if(!cropTarget||!cropPixels)return;
+    try{
+      const scanned=await cropFileToArea(cropTarget.file,cropPixels);
+      if(cropTarget.slot==="front")setFrontFile(scanned);
+      else if(cropTarget.slot==="back")setBackFile(scanned);
+      else{
+        setExtraFiles(current=>{
+          const next=[...current];
+          const index=cropTarget.extraIndex??next.length;
+          next[index]=scanned;
+          return next;
+        });
+      }
+      setCropTarget(null);
+    }catch(e){setMessage(e instanceof Error?e.message:"A kivágás nem sikerült.");}
+  }
+
+  function addExtraScans(files:File[]){
+    if(!files.length)return;
+    const first=files[0];
+    const base=extraFiles.length;
+    const rest=files.slice(1);
+    setExtraFiles(current=>[...current,...new Array(files.length).fill(null)].filter(Boolean) as File[]);
+    setCropTarget({slot:"extra",file:first,extraIndex:base});
+    if(rest.length){
+      // A további képeket egymás után a felhasználó a + További oldalak gombbal tudja pontosan levágni.
+      setMessage("Az első új oldalt vágd körbe; a további oldalakat ugyanígy add hozzá.");
+    }
+  }
+
   async function saveDocument(){
     if(!personId||!frontFile||!title.trim()) return;
     setSaving(true);setMessage("");
@@ -365,7 +415,9 @@ function Docs({cardOnly=false}:{cardOnly?:boolean}={}) {
   function expiryBadge(doc:RemoteDocument){
     if(!doc.expiry_date) return <span className="badge green">Nincs lejárat</span>;
     const today=new Date();today.setHours(0,0,0,0);
-    const days=Math.ceil((new Date(doc.expiry_date+"T00:00:00").getTime()-today.getTime())/86400000);
+    const expiry=dateOnly(doc.expiry_date);
+    if(!expiry)return <span className="badge green">Nincs lejárat</span>;
+    const days=Math.ceil((new Date(expiry+"T00:00:00").getTime()-today.getTime())/86400000);
     if(days<0) return <span className="badge dangerBadge">Lejárt</span>;
     if(days<=30) return <span className="badge amber">{days} nap</span>;
     return <span className="badge green">Érvényes</span>;
@@ -375,7 +427,8 @@ function Docs({cardOnly=false}:{cardOnly?:boolean}={}) {
   const personDocs=documents.filter(doc=>(!personId||doc.family_member_id===personId)&&(!cardOnly||cardKinds.has(doc.kind)));
   const today=new Date();today.setHours(0,0,0,0);
   const withExpiry=personDocs.map(doc=>{
-    const days=doc.expiry_date?Math.ceil((new Date(doc.expiry_date+"T00:00:00").getTime()-today.getTime())/86400000):null;
+    const expiry=dateOnly(doc.expiry_date);
+    const days=expiry?Math.ceil((new Date(expiry+"T00:00:00").getTime()-today.getTime())/86400000):null;
     return {...doc,days};
   });
   const expiredCount=withExpiry.filter(x=>x.days!==null&&x.days<0).length;
@@ -411,17 +464,18 @@ function Docs({cardOnly=false}:{cardOnly?:boolean}={}) {
       <button className="primary-btn" disabled={!personId} onClick={()=>setShowForm(true)}>＋ {cardOnly?"Új kártya":"Új irat"}</button>
     </div>
 
-    <div className="docs-summary-grid">
-      <button className={"card docs-summary-card "+(docFilter==="all"?"active":"")} onClick={()=>setDocFilter("all")}><span>Összes</span><b>{personDocs.length}</b><small>{cardOnly?"kártya":"irat"}</small></button>
-      <button className={"card docs-summary-card "+(docFilter==="expiring"?"active amber-card":"")} onClick={()=>setDocFilter("expiring")}><span>30 napon belül</span><b>{expiringCount}</b><small>figyelmet kér</small></button>
-      <button className={"card docs-summary-card "+(docFilter==="expired"?"active danger-card":"")} onClick={()=>setDocFilter("expired")}><span>Lejárt</span><b>{expiredCount}</b><small>cserélendő</small></button>
-    </div>
-
-    <div className="chips docs-filter-chips">
-      <button className={"chip "+(docFilter==="all"?"on":"")} onClick={()=>setDocFilter("all")}>Mind</button>
-      <button className={"chip "+(docFilter==="valid"?"on":"")} onClick={()=>setDocFilter("valid")}>Rendben <small>{validCount}</small></button>
-      <button className={"chip "+(docFilter==="expiring"?"on":"")} onClick={()=>setDocFilter("expiring")}>Hamarosan <small>{expiringCount}</small></button>
-      <button className={"chip "+(docFilter==="expired"?"on":"")} onClick={()=>setDocFilter("expired")}>Lejárt <small>{expiredCount}</small></button>
+    <div className="docs-toolbar card">
+      <div className="docs-counts">
+        <span><b>{personDocs.length}</b> {cardOnly?"kártya":"irat"}</span>
+        <span className={expiringCount?"warn":""}><b>{expiringCount}</b> hamarosan</span>
+        <span className={expiredCount?"danger":""}><b>{expiredCount}</b> lejárt</span>
+      </div>
+      <div className="docs-filter-segment">
+        <button className={docFilter==="all"?"on":""} onClick={()=>setDocFilter("all")}>Mind</button>
+        <button className={docFilter==="valid"?"on":""} onClick={()=>setDocFilter("valid")}>Rendben</button>
+        <button className={docFilter==="expiring"?"on":""} onClick={()=>setDocFilter("expiring")}>Hamarosan</button>
+        <button className={docFilter==="expired"?"on":""} onClick={()=>setDocFilter("expired")}>Lejárt</button>
+      </div>
     </div>
 
     {message&&<div className="auth-message" style={{marginTop:12}}>{message}</div>}
@@ -452,10 +506,34 @@ function Docs({cardOnly=false}:{cardOnly?:boolean}={}) {
         </div>
         {!currentIsCard&&<button className="ghost-btn doc-more-pages" onClick={()=>extraRef.current?.click()}>＋ További oldalak {extraFiles.length?"("+extraFiles.length+")":""}</button>}
         {extraFiles.length>0&&<div className="doc-file-list">{extraFiles.map((file,i)=><span key={file.name+i}>{i+3}. {file.name}</span>)}</div>}
-        <input ref={frontRef} className="sr-only" type="file" accept="image/*" capture="environment" onChange={e=>setFrontFile(e.target.files?.[0]||null)}/>
-        <input ref={backRef} className="sr-only" type="file" accept="image/*" capture="environment" onChange={e=>setBackFile(e.target.files?.[0]||null)}/>
-        <input ref={extraRef} className="sr-only" type="file" accept="image/*" multiple onChange={e=>setExtraFiles(Array.from(e.target.files||[]))}/>
+        <input ref={frontRef} className="sr-only" type="file" accept="image/*" capture="environment" onChange={e=>chooseForScan(e.target.files?.[0]||null,"front")}/>
+        <input ref={backRef} className="sr-only" type="file" accept="image/*" capture="environment" onChange={e=>chooseForScan(e.target.files?.[0]||null,"back")}/>
+        <input ref={extraRef} className="sr-only" type="file" accept="image/*" onChange={e=>chooseForScan(e.target.files?.[0]||null,"extra",extraFiles.length)}/>
         <button className="primary-btn" disabled={!frontFile||saving} onClick={saveDocument}>{saving?"Mentés…":"Mentés az irattartóba"}</button>
+      </div>
+    </div>}
+
+
+    {cropTarget&&<div className="scanner-overlay">
+      <div className="scanner-shell">
+        <div className="row between scanner-head"><div><b>Dokumentum körbevágása</b><div className="label">Igazítsd a négy szélét a kerethez</div></div><button className="ghost-btn" onClick={()=>setCropTarget(null)}>Mégse</button></div>
+        <div className={"scanner-stage "+(cardVisualKinds.has(kind)?"card-scan":"paper-scan")}>
+          <Cropper
+            image={URL.createObjectURL(cropTarget.file)}
+            crop={cropPos}
+            zoom={cropZoom}
+            aspect={cardVisualKinds.has(kind)?1.586:1/1.414}
+            onCropChange={setCropPos}
+            onZoomChange={setCropZoom}
+            onCropComplete={(_,pixels)=>setCropPixels(pixels)}
+            showGrid
+          />
+          <div className="scanner-corners" aria-hidden="true"><i/><i/><i/><i/></div>
+        </div>
+        <div className="scanner-controls">
+          <label><span>Zoom</span><input type="range" min="1" max="3" step="0.01" value={cropZoom} onChange={e=>setCropZoom(Number(e.target.value))}/></label>
+          <button className="primary-btn" onClick={acceptCrop}>✓ Kivágás mentése</button>
+        </div>
       </div>
     </div>}
 
@@ -473,14 +551,32 @@ function Docs({cardOnly=false}:{cardOnly?:boolean}={}) {
             <div className="binder-status">{expiryBadge(doc)}<span className="binder-chevron">{open?"⌃":"⌄"}</span></div>
           </button>
           {open&&<div className="binder-content">
-            <div className="document-pages">
-              {(doc.pages||[]).map((photo,i)=><button className="document-page" key={photo.id} onClick={()=>window.open(photo.imageUrl,"_blank")}>
-                <img src={photo.imageUrl} alt={doc.title+" "+(i+1)+". oldal"}/><span>{isCard?(i===0?"Előlap":i===1?"Hátlap":(i+1)+". oldal"):(i+1)+". oldal"}</span>
-              </button>)}
-            </div>
+            {(()=>{
+              const pages=doc.pages||[];
+              const current=Math.min(pageByDoc[doc.id]||0,Math.max(0,pages.length-1));
+              const photo=pages[current];
+              return photo?<div className={"document-viewer "+(isCard||cardVisualKinds.has(doc.kind)?"card-viewer":"paper-viewer")}>
+                <div className="document-stage">
+                  <img src={photo.imageUrl} alt={doc.title+" "+(current+1)+". oldal"}/>
+                  {pages.length>1&&<>
+                    <button className="page-arrow prev" disabled={current===0} onClick={()=>setPageByDoc(v=>({...v,[doc.id]:Math.max(0,current-1)}))}>‹</button>
+                    <button className="page-arrow next" disabled={current===pages.length-1} onClick={()=>setPageByDoc(v=>({...v,[doc.id]:Math.min(pages.length-1,current+1)}))}>›</button>
+                  </>}
+                </div>
+                <div className="page-indicator">
+                  <span>{isCard?(current===0?"Előlap":current===1?"Hátlap":(current+1)+". oldal"):(current+1)+". oldal"} · {current+1}/{pages.length}</span>
+                  <div className="page-dots">{pages.map((_,i)=><button key={i} className={i===current?"on":""} onClick={()=>setPageByDoc(v=>({...v,[doc.id]:i}))} aria-label={(i+1)+". oldal"}/>)}</div>
+                </div>
+                <div className="document-actions">
+                  <button className="ghost-btn" onClick={()=>window.open(photo.imageUrl,"_blank")}>Teljes méret</button>
+                  <button className="ghost-btn" onClick={()=>printImagePage(photo.imageUrl,doc.title+" "+(current+1)+". oldal",isCard||cardVisualKinds.has(doc.kind))}>Nyomtatás</button>
+                  {pages.length>1&&<button className="ghost-btn" onClick={()=>printDocumentSet(pages,doc.title,isCard||cardVisualKinds.has(doc.kind))}>Összes oldal</button>}
+                </div>
+              </div>:null;
+            })()}
             <div className="binder-details">
               <div><span>Tulajdonos</span><b>{doc.member_name}</b></div>
-              <div><span>Lejárat</span><b>{doc.expiry_date?new Date(doc.expiry_date+"T00:00:00").toLocaleDateString("hu-HU"):"Nincs megadva"}</b></div>
+              <div><span>Lejárat</span><b>{formatDocDate(doc.expiry_date)}</b></div>
               <div><span>Oldalak</span><b>{doc.pages?.length||1}</b></div>
             </div>
             {doc.metadata?.codeValue&&doc.metadata.codeType==="qr"&&<div className="stored-code-card"><div className="qr-wrap"><QRCode value={doc.metadata.codeValue} size={148} bgColor="#FFFFFF" fgColor="#0B0F14"/></div><div><b>QR-kód</b><span>{doc.metadata.codeValue}</span></div></div>}
