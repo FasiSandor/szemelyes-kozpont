@@ -383,14 +383,17 @@ function Docs({cardOnly=false}:{cardOnly?:boolean}={}) {
   const [scanAspect,setScanAspect]=useState(3/4);
   const [pageByDoc,setPageByDoc]=useState<Record<string,number>>({});
   const [printOpen,setPrintOpen]=useState(false);
-  const [printStep,setPrintStep]=useState<"select"|"preview">("select");
+  const [printStep,setPrintStep]=useState<"select"|"preview"|"pdf">("select");
   const [printSelected,setPrintSelected]=useState<Record<string,number[]>>({});
   const [printBusy,setPrintBusy]=useState(false);
+  const [printPdfBlob,setPrintPdfBlob]=useState<Blob|null>(null);
+  const [printPdfUrl,setPrintPdfUrl]=useState("");
   const frontRef=useRef<HTMLInputElement>(null);
   const backRef=useRef<HTMLInputElement>(null);
   const extraRef=useRef<HTMLInputElement>(null);
   const cropImageUrl=useMemo(()=>cropTarget?URL.createObjectURL(cropTarget.file):"",[cropTarget]);
   useEffect(()=>()=>{if(cropImageUrl)URL.revokeObjectURL(cropImageUrl);},[cropImageUrl]);
+  useEffect(()=>()=>{if(printPdfUrl)URL.revokeObjectURL(printPdfUrl);},[printPdfUrl]);
 
   async function loadHousehold(){
     const res=await fetch("/api/household",{cache:"no-store"});
@@ -584,13 +587,26 @@ function Docs({cardOnly=false}:{cardOnly?:boolean}={}) {
   );
   const printLayout=layoutA4Items(printItems);
 
-  async function exportPrintSheet(){
+  async function buildPdfPreview(){
     if(!printItems.length)return;
     setPrintBusy(true);
     try{
       const blob=await createA4PrintPdf(printItems,(selected?.display_name||"Csaladi")+"_iratok");
-      if(blob)await shareOrSavePdf(blob,(selected?.display_name||"Családi")+" iratok");
+      if(!blob)return;
+      if(printPdfUrl)URL.revokeObjectURL(printPdfUrl);
+      const url=URL.createObjectURL(blob);
+      setPrintPdfBlob(blob);
+      setPrintPdfUrl(url);
+      setPrintStep("pdf");
     }catch(e){setMessage(e instanceof Error?e.message:"A PDF elkészítése nem sikerült.");}
+    finally{setPrintBusy(false);}
+  }
+
+  async function shareBuiltPdf(){
+    if(!printPdfBlob)return;
+    setPrintBusy(true);
+    try{await shareOrSavePdf(printPdfBlob,(selected?.display_name||"Családi")+" iratok");}
+    catch(e){setMessage(e instanceof Error?e.message:"A PDF megosztása nem sikerült.");}
     finally{setPrintBusy(false);}
   }
 
@@ -745,10 +761,10 @@ function Docs({cardOnly=false}:{cardOnly?:boolean}={}) {
         <div className="print-center-header">
           <div>
             <div className="eyebrow">Nyomtatási központ</div>
-            <div className="title">{printStep==="select"?"Mit szeretnél nyomtatni?":"A4 előnézet"}</div>
+            <div className="title">{printStep==="select"?"Mit szeretnél nyomtatni?":printStep==="preview"?"A4 előnézet":"PDF előnézet"}</div>
             <div className="label">{selected?.display_name||"Családtag"}</div>
           </div>
-          <button className="ghost-btn" onClick={()=>{setPrintOpen(false);setPrintStep("select");}}>Bezárás</button>
+          <button className="ghost-btn" onClick={()=>{setPrintOpen(false);setPrintStep("select");setPrintPdfBlob(null);if(printPdfUrl)URL.revokeObjectURL(printPdfUrl);setPrintPdfUrl("");}}>Bezárás</button>
         </div>
 
         {printStep==="select"?<div className="print-select-body">
@@ -774,7 +790,7 @@ function Docs({cardOnly=false}:{cardOnly?:boolean}={}) {
             <div><b>{printItems.length}</b> oldal kiválasztva</div>
             <button className="primary-btn" disabled={!printItems.length} onClick={()=>setPrintStep("preview")}>A4 előnézet ›</button>
           </div>
-        </div>:<div className="print-preview-body">
+        </div>:printStep==="preview"?<div className="print-preview-body">
           <div className="print-preview-toolbar">
             <button className="ghost-btn" onClick={()=>setPrintStep("select")}>‹ Kiválasztás módosítása</button>
             <div className="label">{printItems.length} kép · {printLayout.sheets} A4 oldal</div>
@@ -799,10 +815,22 @@ function Docs({cardOnly=false}:{cardOnly?:boolean}={}) {
           </div>
           <div className="print-center-footer preview-footer">
             <div className="label">Ez kerül a papírra. A kártyák valós mérethez közeli méretben, nagyítás nélkül jelennek meg.</div>
-            <button className="primary-btn" disabled={printBusy} onClick={exportPrintSheet}>{printBusy?"PDF készül…":"PDF / Megosztás / Nyomtatás"}</button>
+            <button className="primary-btn" disabled={printBusy} onClick={buildPdfPreview}>{printBusy?"PDF készül…":"PDF előnézet ›"}</button>
           </div>
         </div>}
-      </div>
+        </div>:<div className="pdf-preview-body">
+          <div className="print-preview-toolbar">
+            <button className="ghost-btn" onClick={()=>setPrintStep("preview")}>‹ A4 előnézet</button>
+            <div className="label">Generált PDF · {printLayout.sheets} oldal</div>
+          </div>
+          <div className="pdf-preview-frame-wrap">
+            {printPdfUrl?<iframe className="pdf-preview-frame" src={printPdfUrl+"#view=FitH"} title="PDF előnézet"/>:<div className="empty-card"><b>Nincs PDF előnézet.</b></div>}
+          </div>
+          <div className="print-center-footer preview-footer">
+            <div className="label">Ezt a PDF-et küldjük tovább az iPhone megosztómenüjébe vagy a Nyomtatás funkcióba.</div>
+            <button className="primary-btn" disabled={!printPdfBlob||printBusy} onClick={shareBuiltPdf}>{printBusy?"Megnyitás…":"Megosztás / Nyomtatás"}</button>
+          </div>
+        </div>}      </div>
     </div>}
 
   </div>
