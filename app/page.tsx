@@ -21,13 +21,45 @@ const docs=[
 function Icon({children,tone=""}:{children:React.ReactNode;tone?:string}) {
   return <div className={"icon "+tone}>{children}</div>
 }
+function PrivacyToggle(){
+  const [revealed,setRevealed]=useState(false);
+  const timerRef=useRef<number|null>(null);
+
+  function hide(){
+    document.documentElement.removeAttribute("data-money-visible");
+    setRevealed(false);
+    if(timerRef.current!==null){window.clearTimeout(timerRef.current);timerRef.current=null;}
+  }
+  function toggle(){
+    if(revealed){hide();return;}
+    document.documentElement.setAttribute("data-money-visible","true");
+    setRevealed(true);
+    if(timerRef.current!==null)window.clearTimeout(timerRef.current);
+    timerRef.current=window.setTimeout(()=>hide(),60000);
+  }
+
+  useEffect(()=>{
+    hide();
+    const onVisibility=()=>{if(document.hidden)hide();};
+    const onBlur=()=>hide();
+    document.addEventListener("visibilitychange",onVisibility);
+    window.addEventListener("blur",onBlur);
+    return()=>{
+      document.removeEventListener("visibilitychange",onVisibility);
+      window.removeEventListener("blur",onBlur);
+      if(timerRef.current!==null)window.clearTimeout(timerRef.current);
+    };
+  },[]);
+
+  return <button className={"privacy-toggle "+(revealed?"on":"")} onClick={toggle} aria-label={revealed?"Pénzügyi adatok elrejtése":"Pénzügyi adatok megjelenítése"} title={revealed?"Elrejtés":"Pénzügyi adatok megjelenítése"}>{revealed?"◉":"◌"}</button>;
+}
 function Header({title="Személyes Központ",back,onBack}:{title?:string;back?:boolean;onBack?:()=>void}) {
   return <div className="topbar">
     <div className="row">
       {back && <button className="ghost-btn" onClick={onBack} aria-label="Vissza">‹</button>}
       <div><div className="eyebrow">2026. október 6.</div><div className="title">{title}</div></div>
     </div>
-    <div className="avatar">SK</div>
+    <div className="row header-actions"><PrivacyToggle/><div className="avatar">SK</div></div>
   </div>
 }
 function BottomNav({screen,setScreen}:{screen:Screen;setScreen:(s:Screen)=>void}) {
