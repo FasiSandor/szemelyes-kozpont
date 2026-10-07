@@ -676,3 +676,29 @@ html,body{max-width:100%;overflow-x:hidden}
 .home-upcoming-list{max-height:240px;overflow-y:auto;overscroll-behavior:contain;padding-right:2px;scrollbar-width:thin;scrollbar-color:#3B82F6 transparent}
 .home-upcoming-list::-webkit-scrollbar{width:4px}
 .home-upcoming-list::-webkit-scrollbar-thumb{background:#3B82F6;border-radius:99px}
+
+
+/* ---------- HOME CASHFLOW SUMMARY ---------- */
+.home-cashflow-summary{display:grid;gap:16px}
+.home-cashflow-kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.home-cashflow-kpis>div{padding:12px;border:1px solid rgba(71,91,122,.42);border-radius:14px;background:rgba(11,15,20,.20);display:grid;gap:4px}
+.home-cashflow-kpis span{font-size:10px;color:#94A3B8}
+.home-cashflow-kpis b{font-size:18px}
+.home-cashflow-kpis small{font-size:9px;color:#94A3B8}
+.home-cashflow-kpis small.up{color:#4ADE80}.home-cashflow-kpis small.down{color:#FCA5A5}
+.home-flow-bars{display:grid;gap:10px;padding:2px 0}
+.home-flow-row{display:grid;grid-template-columns:58px 1fr auto;gap:10px;align-items:center}
+.home-flow-row>span{font-size:10px;color:#94A3B8}.home-flow-row>b{font-size:10px;color:#E2E8F0;white-space:nowrap}
+.home-flow-track,.home-top-track{height:10px;border-radius:999px;background:#0A1320;overflow:hidden;border:1px solid rgba(42,52,69,.72)}
+.home-flow-track i,.home-top-track i{display:block;height:100%;border-radius:999px;animation:analyticsGrow .75s ease-out}
+.home-flow-track i.income{background:linear-gradient(90deg,#22C55E,#4ADE80,#22D3EE)}
+.home-flow-track i.expense{background:linear-gradient(90deg,#3B82F6,#60A5FA,#22D3EE)}
+.home-top-spend{display:grid;gap:10px}
+.home-top-row{display:grid;gap:6px}
+.home-top-row span,.home-top-row b{font-size:10px}
+.home-top-track i{background:linear-gradient(90deg,#2563EB,#60A5FA,#22D3EE)}
+@media(max-width:560px){
+  .home-cashflow-kpis{grid-template-columns:1fr}
+  .home-flow-row{grid-template-columns:52px 1fr}
+  .home-flow-row>b{grid-column:2;text-align:right}
+}
