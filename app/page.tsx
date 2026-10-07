@@ -430,6 +430,7 @@ function Finance() {
   const [message,setMessage]=useState("");
   const [bank,setBank]=useState<BankConnectionState|null>(null);
   const [bankBusy,setBankBusy]=useState(false);
+  const autoSyncRef=useRef(false);
   const fileRef=useRef<HTMLInputElement>(null);
 
   async function load(){
@@ -465,13 +466,13 @@ function Finance() {
     }
   }
 
-  async function syncBank(){
-    setBankBusy(true);setMessage("OTP tranzakciók frissítése…");
+  async function syncBank(silent=false){
+    setBankBusy(true);if(!silent)setMessage("OTP tranzakciók frissítése…");
     try{
       const res=await fetch("/api/finance/openbanking/sync",{method:"POST"});
       const json=await res.json();
       if(!res.ok)throw new Error(json.error||"A banki szinkron nem sikerült.");
-      setMessage("OTP szinkron kész: "+json.inserted+" új tranzakció.");
+      if(!silent)setMessage("OTP szinkron kész: "+json.inserted+" új tranzakció.");
       await Promise.all([load(),loadBank()]);
     }catch(e){setMessage(e instanceof Error?e.message:"OTP szinkron hiba.");}
     finally{setBankBusy(false);}
@@ -494,6 +495,16 @@ function Finance() {
     }catch(e){setMessage(e instanceof Error?e.message:"Import hiba.");}
     finally{setImporting(false);if(fileRef.current)fileRef.current.value="";}
   }
+
+  useEffect(()=>{
+    const connection=bank?.connection;
+    const linkedNow=connection?.status==="LN"||Boolean(connection?.account_ids?.length);
+    if(!linkedNow||autoSyncRef.current||bankBusy)return;
+    const last=connection?.last_sync_at?new Date(connection.last_sync_at).getTime():0;
+    if(last&&Date.now()-last<6*60*60*1000)return;
+    autoSyncRef.current=true;
+    void syncBank(true);
+  },[bank?.connection?.status,bank?.connection?.last_sync_at]);
 
   const income=Number(data?.totals?.income_huf||0);
   const expense=Number(data?.totals?.expense_huf||0);
@@ -521,7 +532,7 @@ function Finance() {
       </div>
       <div className="openbanking-actions">
         {!linked?<button className="primary-btn" disabled={bankBusy||!bank?.configured} onClick={()=>void connectBank()}>{bankBusy?"Kapcsolódás…":"OTP összekapcsolása"}</button>:
-        <button className="primary-btn" disabled={bankBusy} onClick={()=>void syncBank()}>{bankBusy?"Frissítés…":"↻ OTP frissítés"}</button>}
+        <button className="primary-btn" disabled={bankBusy} onClick={()=>void syncBank(false)}>{bankBusy?"Frissítés…":"↻ OTP frissítés"}</button>}
         {lastSync&&<span className="label">Utolsó szinkron: {lastSync}</span>}
       </div>
     </div>
