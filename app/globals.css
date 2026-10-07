@@ -661,3 +661,49 @@ html,body{max-width:100%;overflow-x:hidden}
 .home-real-donut{width:64px;height:64px;flex:0 0 64px;border-radius:50%;display:grid;place-items:center;position:relative;box-shadow:0 0 18px rgba(59,130,246,.14)}
 .home-real-donut:after{content:"";position:absolute;inset:11px;border-radius:50%;background:#101826;border:1px solid #2A3445}
 .home-real-donut span{position:relative;z-index:1;font-size:8px;font-weight:800;color:#E5EEF9;text-align:center;max-width:42px;line-height:1.1}
+
+
+/* ---------- PRIVACY MODE ---------- */
+.privacy-toggle{
+  width:42px;height:42px;border-radius:14px;border:1px solid rgba(96,165,250,.34);
+  background:linear-gradient(160deg,#111827,#0B1320);color:#93C5FD;
+  display:grid;place-items:center;font-size:22px;cursor:pointer;
+  box-shadow:0 0 16px rgba(59,130,246,.10)
+}
+.privacy-toggle.on{color:#67E8F9;border-color:rgba(34,211,238,.52);box-shadow:0 0 20px rgba(34,211,238,.14)}
+.header-actions{gap:8px}
+
+/* sensitive values stay blurred by default */
+html:not([data-money-visible="true"]) .finance-v3 .metric,
+html:not([data-money-visible="true"]) .finance-v3 .revenue-donut-hole b,
+html:not([data-money-visible="true"]) .finance-v3 .revenue-legend-row>span:nth-of-type(2),
+html:not([data-money-visible="true"]) .finance-v3 .finance-income-row>b,
+html:not([data-money-visible="true"]) .finance-v3 .finance-transaction-row>b,
+html:not([data-money-visible="true"]) .home-v2 .home-overview-grid .home-overview-card:nth-child(-n+2) .metric,
+html:not([data-money-visible="true"]) .home-v2 .home-real-donut span,
+html:not([data-money-visible="true"]) .nav-invoice-center .metric,
+html:not([data-money-visible="true"]) .nav-invoice-center .revenue-donut-hole b,
+html:not([data-money-visible="true"]) .nav-invoice-center .nav-invoice-row b:last-child,
+html:not([data-money-visible="true"]) .nav-invoice-center .analytics-year-row b,
+html:not([data-money-visible="true"]) .nav-invoice-center .analytics-rank-row small,
+html:not([data-money-visible="true"]) .nav-invoice-center .payment-row small{
+  filter:blur(8px);
+  user-select:none;
+  transition:filter .18s ease;
+}
+
+/* donut center readability */
+.home-real-donut{
+  width:70px!important;height:70px!important;flex:0 0 70px!important;
+  border-radius:50%!important;display:grid!important;place-items:center!important;
+  position:relative!important;overflow:hidden!important
+}
+.home-real-donut:after{
+  content:"";position:absolute!important;inset:12px!important;border-radius:50%!important;
+  background:linear-gradient(155deg,#111827,#0B0F14)!important;
+  border:1px solid #2A3445!important;z-index:0!important
+}
+.home-real-donut span{
+  position:relative!important;z-index:1!important;font-size:8px!important;font-weight:800!important;
+  color:#E5EEF9!important;text-align:center!important;max-width:44px!important;line-height:1.05!important
+}
