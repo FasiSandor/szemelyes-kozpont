@@ -32,7 +32,7 @@ function Header({title="Személyes Központ",back,onBack}:{title?:string;back?:b
 }
 function BottomNav({screen,setScreen}:{screen:Screen;setScreen:(s:Screen)=>void}) {
   const nav:[Screen,string,string][]=[
-    ["home","⌂","Főoldal"],["docs","▤","Iratok"],["finance","◴","Pénzügyek"],["tasks","✓","Teendők"],["more","☰","Több"]
+    ["home","⌂","Főoldal"],["docs","▤","Iratok"],["finance","◴","Pénzügyek"],["business","▥","Vállalkozás"],["more","☰","Több"]
   ];
   return <div className="bottom"><div className="nav">{nav.map(([id,ic,label])=>
     <button key={id} className={screen===id?"on":""} onClick={()=>setScreen(id)}><span className="ni">{ic}</span>{label}</button>
@@ -52,58 +52,69 @@ function Home({go}:{go:(s:Screen)=>void}) {
   useEffect(()=>{
     let active=true;
     fetch("/api/nav/invoices?year="+new Date().getFullYear(),{cache:"no-store"})
-      .then(r=>r.json())
-      .then(data=>{if(active)setNavData(data);})
-      .catch(()=>{});
+      .then(r=>r.json()).then(data=>{if(active)setNavData(data);}).catch(()=>{});
     return()=>{active=false;};
   },[]);
   const navReady=Boolean(navData?.configured);
   const navSummary=navData?.summary;
+  const allYears=(navData?.allYears||[]).slice().sort((a,b)=>a.year-b.year);
+  const totalInvoices=allYears.reduce((n,x)=>n+Number(x.count||0),0);
+  const totalRevenue=allYears.reduce((n,x)=>n+Number(x.gross_huf||0),0);
 
-  return <div className="page">
+  return <div className="page home-v2">
     <Header/>
-    <div className="notice">
-      <div className="row between"><div><b>Ma</b><div className="subtle" style={{marginTop:4}}>2 teendőd van</div></div><span className="badge amber">Figyelmet kér</span></div>
-      <div style={{marginTop:12}} className="list">
-        <div className="row"><Icon tone="amber">◷</Icon><div className="grow">Gépjárműadó esedékes <b>8 nap múlva</b></div></div>
-        <div className="row"><Icon tone="amber">▣</Icon><div className="grow">1 okmány hamarosan lejár</div></div>
+    <button className="notice home-upcoming" onClick={()=>go("tasks")}>
+      <div className="row between"><div><b>Közelgő</b><div className="subtle" style={{marginTop:4}}>Teendők, lejáratok és határidők</div></div><span className="badge amber">Megnyitás ›</span></div>
+      <div className="home-upcoming-list">
+        <div className="row"><Icon tone="amber">◷</Icon><div className="grow"><b>Teendők</b><div className="label">A teljes listát itt éred el</div></div></div>
+        <div className="row"><Icon tone="amber">▣</Icon><div className="grow"><b>Lejáratok és NAV-határidők</b><div className="label">Egy helyen, időrendben</div></div></div>
       </div>
-    </div>
+    </button>
 
     <div className="section-title">Áttekintés</div>
-    <div className="grid hero-grid">
-      <button className="card active" onClick={()=>go("business")} style={{textAlign:"left",color:"inherit"}}>
+    <div className="grid hero-grid home-overview-grid">
+      <button className="card active home-overview-card" onClick={()=>go("business")}>
         <div className="row between"><Icon>▥</Icon><span className="badge">Vállalkozás</span></div>
-        <div className="label" style={{marginTop:12}}>{new Date().getFullYear()} kiállított számlák</div>
+        <div className="label">Idei kiszámlázott bruttó</div>
         <div className="metric">{navReady?money(navSummary?.issued_gross_huf):"NAV kapcsolat"}</div>
-        <div className="delta">{navReady?`${navSummary?.issued_count||0} db számla`:"Állítsd be a számlákhoz"}</div>
+        <div className="delta">{navReady?(navSummary?.issued_count||0)+" számla idén":"Kapcsolat beállítása"}</div>
       </button>
-      <button className="card" onClick={()=>go("nav")} style={{textAlign:"left",color:"inherit"}}>
+      <button className="card home-overview-card" onClick={()=>go("nav")}>
         <div className="row between"><Icon tone={navReady?"green":""}>N</Icon><span className={"badge "+(navReady?"green":"amber")}>{navReady?"Kapcsolva":"Nincs bekötve"}</span></div>
-        <div className="label" style={{marginTop:12}}>NAV Online Számla</div>
-        <div className="metric" style={{fontSize:18}}>{navReady?`${navSummary?.issued_count||0} kiállított számla`:"Kapcsolat beállítása"}</div>
-        <div className="delta">{navReady?(navData?.lastSyncAt?"Frissítve: "+new Date(navData.lastSyncAt).toLocaleDateString("hu-HU"):"Szinkronra vár"):"Technikai felhasználó szükséges"}</div>
+        <div className="label">NAV számlatörténet</div>
+        <div className="metric">{navReady?money(totalRevenue):"—"}</div>
+        <div className="delta">{navReady?totalInvoices+" számla összesen":"Technikai felhasználó szükséges"}</div>
       </button>
-      <MetricCard icon="◴" label="Októberi kiadás" value="286 400 Ft" delta="↗ +5,2%"/>
-      <MetricCard icon="♙" label="Család" value="4 profil" delta="1 közelgő lejárat" tone="amber"/>
+      <button className="card home-overview-card" onClick={()=>go("docs")}>
+        <div className="row between"><Icon tone="cyan">♙</Icon><span className="badge">Család</span></div>
+        <div className="label">Családi irattár</div>
+        <div className="metric">4 profil</div>
+        <div className="delta">Okmányok és lejáratok</div>
+      </button>
+      <button className="card home-overview-card" onClick={()=>go("finance")}>
+        <div className="row between"><Icon>◴</Icon><span className="badge">Pénzügyek</span></div>
+        <div className="label">Havi pénzügyi kép</div>
+        <div className="metric">Megoszlások</div>
+        <div className="delta">Mire költök? · Hol költök?</div>
+      </button>
     </div>
 
-    <div className="content-grid">
-      <div>
-        <div className="section-title">Havi pénzügyi áttekintés</div>
-        <div className="card">
-          <div className="row between"><div><b>Bevétel és kiadás</b><div className="subtle" style={{marginTop:3}}>Utolsó 12 hónap</div></div><span className="badge">Év</span></div>
-          <MiniChart/>
-        </div>
+    <div className="section-title">Havi pénzügyi kép</div>
+    <div className="card home-finance-summary">
+      <div className="row between"><div><b>Kiadások megoszlása</b><div className="label">Két nézet: mire és hol költöd</div></div><button className="ghost-btn" onClick={()=>go("finance")}>Részletek ›</button></div>
+      <div className="home-donut-preview-grid">
+        <div className="home-donut-preview"><div className="empty-donut"><span>?</span></div><div><b>Mire költök?</b><div className="label">Élelmiszer, üzemanyag, rezsi…</div></div></div>
+        <div className="home-donut-preview"><div className="empty-donut alt"><span>?</span></div><div><b>Hol költök?</b><div className="label">Lidl, Penny, tankolás…</div></div></div>
       </div>
-      <div>
-        <div className="section-title">Gyorsműveletek</div>
-        <div className="list">
-          <button className="list-item" onClick={()=>go("docs")}><Icon>▤</Icon><div className="grow"><b>Irat fényképezése</b><div className="label">Családtaghoz rendelhető</div></div><span className="chev">›</span></button>
-          <button className="list-item" onClick={()=>go("vault")}><Icon>⌘</Icon><div className="grow"><b>Jelszótár</b><div className="label">Titkosított Vault</div></div><span className="chev">›</span></button>
-          <button className="list-item" onClick={()=>go("reports")}><Icon>⇩</Icon><div className="grow"><b>Riport készítése</b><div className="label">PDF / nyomtatás</div></div><span className="chev">›</span></button>
-        </div>
-      </div>
+      <div className="finance-source-note">A valódi költési arányok akkor jelennek meg, amikor tranzakciós adatforrást kötünk be. Nem mutatunk becsült vagy kitalált összegeket.</div>
+    </div>
+
+    <div className="section-title">Gyorsműveletek</div>
+    <div className="quick-actions-grid">
+      <button className="list-item" onClick={()=>go("docs")}><Icon>▤</Icon><div className="grow"><b>Irat</b><div className="label">Fotó / feltöltés</div></div><span className="chev">›</span></button>
+      <button className="list-item" onClick={()=>go("tasks")}><Icon>✓</Icon><div className="grow"><b>Teendő</b><div className="label">Lista megnyitása</div></div><span className="chev">›</span></button>
+      <button className="list-item" onClick={()=>go("nav")}><Icon>N</Icon><div className="grow"><b>NAV</b><div className="label">Számlák és határidők</div></div><span className="chev">›</span></button>
+      <button className="list-item" onClick={()=>go("vault")}><Icon>⌘</Icon><div className="grow"><b>Jelszótár</b><div className="label">Titkosított Vault</div></div><span className="chev">›</span></button>
     </div>
   </div>
 }
@@ -338,17 +349,29 @@ function Docs() {
   </div>
 }
 function Finance() {
-  return <div className="page">
+  const [view,setView]=useState<"purpose"|"merchant">("purpose");
+  return <div className="page finance-v2">
     <Header title="Pénzügyek"/>
     <div className="tabs"><button className="tab on">Áttekintés</button><button className="tab">Tranzakciók</button><button className="tab">Kategóriák</button><button className="tab">Számlák</button></div>
-    <div className="chips" style={{marginTop:12}}><button className="chip">Hónap</button><button className="chip on">Negyedév</button><button className="chip">Év</button><button className="chip">Egyéni</button></div>
-    <div className="section-title">2026 Q3 · július–szeptember</div>
-    <div className="grid hero-grid"><MetricCard icon="↗" label="Bevétel" value="1 248 500 Ft" delta="↗ 12,4%"/><MetricCard icon="↘" label="Kiadás" value="862 300 Ft" delta="− 5,1%" tone="red"/></div>
-    <div className="card" style={{marginTop:12}}><div className="row between"><b>Havi mozgás</b><span className="badge">Vegyes</span></div><MiniChart/></div>
-    <div className="section-title">Kiadások kategóriák szerint</div>
-    <div className="card"><div className="donut"></div><div className="list">
-      {["Lakhatás · 28%","Élelmiszer · 18%","Üzemanyag · 14%","Szolgáltatások · 12%","Vállalkozás · 11%","Egyéb · 17%"].map((x,i)=><div className="row between" key={x}><span className="subtle">{x}</span><span style={{color:["#60A5FA","#22D3EE","#22C55E","#F59E0B","#8b5cf6","#64748B"][i]}}>●</span></div>)}
-    </div></div>
+    <div className="section-title">Havi pénzügyi kép</div>
+    <div className="card finance-empty-summary">
+      <div className="row between"><div><b>Valós tranzakciós adatokra vár</b><div className="label">Banki/import forrás nélkül nem számolunk kitalált bevételt vagy kiadást.</div></div><span className="badge amber">Nincs forrás</span></div>
+    </div>
+    <div className="section-title">Kiadási megoszlás</div>
+    <div className="card spending-overview">
+      <div className="tabs revenue-view-tabs">
+        <button className={"tab "+(view==="purpose"?"on":"")} onClick={()=>setView("purpose")}>Mire költök?</button>
+        <button className={"tab "+(view==="merchant"?"on":"")} onClick={()=>setView("merchant")}>Hol költök?</button>
+      </div>
+      <div className="spending-empty-layout">
+        <div className={"spending-donut-empty "+(view==="merchant"?"merchant":"")}><div><b>— Ft</b><span>{view==="purpose"?"kategóriák":"kereskedők"}</span></div></div>
+        <div className="spending-empty-copy">
+          <b>{view==="purpose"?"Mire megy el a pénz?":"Hol költöd el?"}</b>
+          <p>{view==="purpose"?"Élelmiszer, üzemanyag, rezsi, előfizetések, autó és egyéb kategóriák aránya kerül ide.":"Lidl, Penny, Tesco, MOL, Shell, gyógyszertárak és más kereskedők aránya kerül ide."}</p>
+          <div className="finance-source-note">A kördiagram automatikusan épül majd a valódi tranzakciókból, kézi százalékok nélkül.</div>
+        </div>
+      </div>
+    </div>
   </div>
 }
 type NavInvoiceRow={
@@ -395,6 +418,7 @@ type NavInvoiceData={
   paymentMethods?:{method:string;count:number;gross_huf:string|number}[];
   allYears?:{year:number;count:number;gross_huf:string|number;avg_huf:string|number;customers:number}[];
   allMonthly?:{year:number;month:number;count:number;gross_huf:string|number}[];
+  allInvoices?:NavInvoiceRow[];
   invoices?:NavInvoiceRow[];
 };
 
@@ -527,7 +551,8 @@ function IssuedInvoiceCenter({navMode=false}:{navMode?:boolean}){
 
   const periodRows=(data?.invoices||[]).filter(inSelectedPeriod);
   const createRows=periodRows.filter(x=>x.invoice_operation==="CREATE");
-  const invoices=periodRows.filter(x=>op==="ALL"||x.invoice_operation===op);
+  const invoiceHistory=(data?.allInvoices||data?.invoices||[]);
+  const invoices=invoiceHistory.filter(x=>op==="ALL"||x.invoice_operation===op);
   const selectedGross=createRows.reduce((sum,x)=>sum+Number(x.gross_amount_huf||0),0);
   const selectedAvg=createRows.length?selectedGross/createRows.length:0;
   const selectedCustomers=new Set(createRows.map(x=>x.partner_name).filter(Boolean)).size;
@@ -683,6 +708,26 @@ function IssuedInvoiceCenter({navMode=false}:{navMode?:boolean}){
       <div className="card"><div className="label">Módosítás / stornó</div><div className="metric">{selectedModify+selectedStorno} db</div><div className="delta down">{selectedModify} mód. · {selectedStorno} stornó</div></div>
     </div>
 
+    <div className="section-title">Kiállított számlák</div>
+    <div className="nav-toolbar">
+      <div className="nav-search"><span>⌕</span><input value={q} onChange={e=>setQ(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")void load(q);}} placeholder="Számlaszám vagy vevő…"/><button onClick={()=>load(q)}>Keresés</button></div>
+      <div className="chips">
+        {(["ALL","CREATE","MODIFY","STORNO"] as const).map(value=><button key={value} className={"chip "+(op===value?"on":"")} onClick={()=>setOp(value)}>{value==="ALL"?"Mind":prettyOperation(value)}</button>)}
+      </div>
+    </div>
+
+    {invoices.length===0?<div className="empty-card"><div className="empty-icon">▥</div><b>Nincs ilyen számla</b><div className="label">A lista a teljes NAV számlatörténetben keres.</div></div>:
+    <div className="nav-invoice-scroll"><div className="nav-invoice-list">
+      {invoices.map(inv=><button className={"nav-invoice-row "+(selected?.id===inv.id?"selected":"")} key={inv.id} onClick={()=>setSelected(inv)}>
+        <div className="nav-invoice-main">
+          <div className="row"><b>{inv.invoice_number||"Számla"}</b><span className={"nav-op "+(inv.invoice_operation||"").toLowerCase()}>{prettyOperation(inv.invoice_operation)}</span></div>
+          <div className="nav-customer">{inv.partner_name||"Magánszemély / nincs név"}</div>
+          <div className="label">{new Date(inv.issue_date).toLocaleDateString("hu-HU")} · {prettyMethod(inv.payment_method)}</div>
+        </div>
+        <div className="nav-invoice-amount"><b>{money(inv.gross_amount_huf)}</b><span>{inv.currency||"HUF"} · Részletek ›</span></div>
+      </button>)}
+    </div></div>}
+
     {years.length>0&&<><div className="section-title">Bevételi áttekintés</div><div className="card revenue-overview">
       <div className="row between revenue-overview-head">
         <div><div className="label">Összes eddigi kiszámlázott bevétel</div><div className="metric">{money(totalAllRevenue)}</div><div className="delta">{totalAllInvoices} számla · {years[0]?.year}–{years.at(-1)?.year}</div></div>
@@ -738,26 +783,6 @@ function IssuedInvoiceCenter({navMode=false}:{navMode?:boolean}){
       {paymentRows.map(p=><div className="payment-row" key={p.name}><div className="row between"><b>{p.name}</b><span>{Math.round(p.gross/totalPayment*100)}% · {money(p.gross)}</span></div><div className="analytics-track cyan"><i style={{width:Math.max(3,Math.round(p.gross/totalPayment*100))+"%"}}/></div></div>)}
     </div></>}
 
-    <div className="section-title">Kiállított számlák</div>
-    <div className="nav-toolbar">
-      <div className="nav-search"><span>⌕</span><input value={q} onChange={e=>setQ(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")void load(q);}} placeholder="Számlaszám vagy vevő…"/><button onClick={()=>load(q)}>Keresés</button></div>
-      <div className="chips">
-        {(["ALL","CREATE","MODIFY","STORNO"] as const).map(value=><button key={value} className={"chip "+(op===value?"on":"")} onClick={()=>setOp(value)}>{value==="ALL"?"Mind":prettyOperation(value)}</button>)}
-      </div>
-    </div>
-
-    {invoices.length===0?<div className="empty-card"><div className="empty-icon">▥</div><b>Nincs számla ebben az időszakban</b><div className="label">Válassz másik évet, negyedévet vagy hónapokat.</div></div>:
-    <div className="nav-invoice-list">
-      {invoices.map(inv=><button className={"nav-invoice-row "+(selected?.id===inv.id?"selected":"")} key={inv.id} onClick={()=>setSelected(inv)}>
-        <div className="nav-invoice-main">
-          <div className="row"><b>{inv.invoice_number||"Számla"}</b><span className={"nav-op "+(inv.invoice_operation||"").toLowerCase()}>{prettyOperation(inv.invoice_operation)}</span></div>
-          <div className="nav-customer">{inv.partner_name||"Magánszemély / nincs név"}</div>
-          <div className="label">{new Date(inv.issue_date).toLocaleDateString("hu-HU")} · {prettyMethod(inv.payment_method)}</div>
-        </div>
-        <div className="nav-invoice-amount"><b>{money(inv.gross_amount_huf)}</b><span>{inv.currency||"HUF"} · Részletek ›</span></div>
-      </button>)}
-    </div>}
-
     {selected&&<div className="invoice-sheet-backdrop" onClick={()=>setSelected(null)}>
       <div className="invoice-sheet" onClick={e=>e.stopPropagation()}>
         <div className="invoice-sheet-handle"/>
@@ -779,7 +804,7 @@ function IssuedInvoiceCenter({navMode=false}:{navMode?:boolean}){
     </div>}
 
     {navMode&&<div className="card nav-next-module">
-      <div className="row"><Icon tone="amber">N</Icon><div><b>Adószámla, határidők és bevallások</b><div className="label">Külön NAV-adatforrás. A következő modulban UPO-kivonat importtal és valós határidőkezeléssel készül el.</div></div></div>
+      <div className="row"><Icon tone="amber">N</Icon><div><b>Adószámla, határidők és bevallások</b><div className="label">A részletes NAV funkciókat a felső Adószámla, Határidők és Bevallások füleken éred el.</div></div></div>
     </div>}
   </div>;
 }
@@ -1060,12 +1085,11 @@ function ScrollTopButton(){
   return()=>window.removeEventListener("scroll",onScroll);
  },[]);
  if(!show)return null;
- return <button className="scroll-top-btn" onClick={()=>window.scrollTo({top:0,behavior:"smooth"})} aria-label="Oldal teteje">↑<span>Oldal teteje</span></button>;
+ return <button className="scroll-top-btn" title="Oldal teteje" onClick={()=>window.scrollTo({top:0,behavior:"smooth"})} aria-label="Oldal teteje">↑</button>;
 }
 
 function More({go}:{go:(s:Screen)=>void}){
  const items:[Screen,string,string,string][]=[
-  ["business","▥","Vállalkozás","Számlák, bevétel, partnerek"],
   ["nav","N","NAV","Adószámla, bevallás, határidők"],
   ["vault","⌘","Jelszótár","Jelszavak és PIN-kódok"],
   ["cards","▣","Kártyák","Bank-, vásárlói és tagsági kártyák"],

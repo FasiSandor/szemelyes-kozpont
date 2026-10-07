@@ -146,6 +146,14 @@ export async function GET(request:Request){
       order by 1,2
     `;
 
+    const allInvoices=await db`
+      select *
+      from invoices
+      where business_id=${integration.business_id}
+      order by issue_date desc, created_at desc
+      limit 500
+    `;
+
     return Response.json({
       configured:true,
       businessName:integration.business_name,
@@ -161,6 +169,7 @@ export async function GET(request:Request){
       paymentMethods,
       allYears,
       allMonthly,
+      allInvoices,
       invoices:rows,
     });
   }catch(error){

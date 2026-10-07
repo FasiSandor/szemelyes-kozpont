@@ -569,3 +569,44 @@ textarea.input{resize:vertical;min-height:62px;padding-top:11px}
  .nav-calendar-card .primary-btn{width:100%}
 }
 @media(max-width:420px){.scroll-top-btn span{display:none}.scroll-top-btn{width:46px;padding:0}}
+
+
+/* ---------- DASHBOARD STRUCTURE V2 ---------- */
+.home-upcoming{width:100%;text-align:left;color:inherit;cursor:pointer}
+.home-upcoming-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:13px}
+.home-upcoming-list>.row{padding:10px;border:1px solid rgba(71,91,122,.38);border-radius:13px;background:rgba(11,15,20,.22)}
+.home-overview-card{display:grid;gap:11px;text-align:left;color:inherit;cursor:pointer}
+.home-overview-card .metric{font-size:clamp(22px,5vw,31px)}
+.home-finance-summary{display:grid;gap:15px}
+.home-donut-preview-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.home-donut-preview{display:flex;align-items:center;gap:13px;padding:12px;border:1px solid rgba(71,91,122,.42);border-radius:16px;background:rgba(11,15,20,.2)}
+.empty-donut{width:64px;height:64px;flex:0 0 64px;border-radius:50%;display:grid;place-items:center;background:conic-gradient(#3B82F6 0 24%,#22D3EE 24% 43%,#22C55E 43% 62%,#2A3445 62% 100%);box-shadow:0 0 18px rgba(59,130,246,.14)}
+.empty-donut.alt{background:conic-gradient(#60A5FA 0 30%,#22D3EE 30% 53%,#F59E0B 53% 67%,#2A3445 67% 100%)}
+.empty-donut span{width:38px;height:38px;border-radius:50%;display:grid;place-items:center;background:#101826;border:1px solid #2A3445;color:#7F91AA;font-weight:800}
+.finance-source-note{padding:10px 12px;border-radius:12px;border:1px dashed rgba(96,165,250,.28);background:rgba(59,130,246,.05);font-size:10px;line-height:1.45;color:#93A4BC}
+.quick-actions-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+
+/* ---------- FINANCE V2 ---------- */
+.finance-empty-summary{margin-top:0}
+.spending-overview{display:grid;gap:18px}
+.spending-empty-layout{display:grid;grid-template-columns:minmax(180px,240px) 1fr;gap:22px;align-items:center}
+.spending-donut-empty{width:min(58vw,220px);aspect-ratio:1;border-radius:50%;display:grid;place-items:center;margin:auto;background:conic-gradient(#3B82F6 0 26%,#22D3EE 26% 48%,#22C55E 48% 64%,#F59E0B 64% 77%,#2A3445 77% 100%);box-shadow:0 0 26px rgba(59,130,246,.16)}
+.spending-donut-empty.merchant{background:conic-gradient(#60A5FA 0 29%,#22D3EE 29% 50%,#F59E0B 50% 66%,#8B5CF6 66% 78%,#2A3445 78% 100%)}
+.spending-donut-empty>div{width:64%;aspect-ratio:1;border-radius:50%;display:grid;place-items:center;align-content:center;background:linear-gradient(155deg,#111827,#0B0F14);border:1px solid #2A3445;text-align:center}
+.spending-donut-empty b{font-size:20px}.spending-donut-empty span{font-size:9px;color:#7F91AA;margin-top:3px}
+.spending-empty-copy{display:grid;gap:9px}.spending-empty-copy>p{margin:0;color:#94A3B8;line-height:1.5;font-size:12px}
+
+/* ---------- NAV INVOICE HISTORY ---------- */
+.nav-invoice-scroll{max-height:390px;overflow-y:auto;overscroll-behavior:contain;padding-right:3px;border-radius:18px;scrollbar-width:thin;scrollbar-color:#3B82F6 transparent}
+.nav-invoice-scroll::-webkit-scrollbar{width:5px}.nav-invoice-scroll::-webkit-scrollbar-thumb{background:#3B82F6;border-radius:99px}
+.nav-invoice-scroll .nav-invoice-list{padding-bottom:2px}
+
+/* compact floating scroll-top */
+.scroll-top-btn{width:46px!important;min-width:46px!important;height:46px!important;padding:0!important;border-radius:50%!important;font-size:20px}
+.scroll-top-btn span{display:none!important}
+
+@media(max-width:700px){
+ .home-upcoming-list,.home-donut-preview-grid,.quick-actions-grid{grid-template-columns:1fr}
+ .spending-empty-layout{grid-template-columns:1fr}
+ .nav-invoice-scroll{max-height:355px}
+}
