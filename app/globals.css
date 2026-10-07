@@ -646,3 +646,12 @@ textarea.input{resize:vertical;min-height:62px;padding-top:11px}
  .openbanking-actions{align-items:stretch}
  .openbanking-actions .primary-btn{width:100%}
 }
+
+
+/* ---------- MOBILE HORIZONTAL OVERFLOW GUARD ---------- */
+html,body{max-width:100%;overflow-x:hidden}
+.app,.shell,.page{max-width:100%;overflow-x:clip}
+.row>*{min-width:0}
+.card,.finance-v3,.openbanking-card,.finance-top-row{max-width:100%}
+.finance-month-picker,.finance-month-picker input{min-width:0;max-width:100%}
+.finance-transaction-row .grow,.openbanking-head .row>div{min-width:0;max-width:100%}
