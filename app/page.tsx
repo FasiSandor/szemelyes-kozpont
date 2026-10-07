@@ -49,10 +49,18 @@ function MiniChart() {
 }
 function Home({go}:{go:(s:Screen)=>void}) {
   const [navData,setNavData]=useState<NavInvoiceData|null>(null);
+  const [financeData,setFinanceData]=useState<FinanceData|null>(null);
   useEffect(()=>{
     let active=true;
-    fetch("/api/nav/invoices?year="+new Date().getFullYear(),{cache:"no-store"})
-      .then(r=>r.json()).then(data=>{if(active)setNavData(data);}).catch(()=>{});
+    const month=new Date().toISOString().slice(0,7);
+    Promise.all([
+      fetch("/api/nav/invoices?year="+new Date().getFullYear(),{cache:"no-store"}).then(r=>r.json()),
+      fetch("/api/finance/transactions?month="+month,{cache:"no-store"}).then(r=>r.json())
+    ]).then(([nav,finance])=>{
+      if(!active)return;
+      setNavData(nav);
+      setFinanceData(finance);
+    }).catch(()=>{});
     return()=>{active=false;};
   },[]);
   const navReady=Boolean(navData?.configured);
@@ -60,6 +68,19 @@ function Home({go}:{go:(s:Screen)=>void}) {
   const allYears=(navData?.allYears||[]).slice().sort((a,b)=>a.year-b.year);
   const totalInvoices=allYears.reduce((n,x)=>n+Number(x.count||0),0);
   const totalRevenue=allYears.reduce((n,x)=>n+Number(x.gross_huf||0),0);
+  const homeColors=["#3B82F6","#22D3EE","#22C55E","#F59E0B","#8B5CF6","#EF4444","#60A5FA","#64748B"];
+  const makeDonut=(items:FinanceSlice[])=>{
+    const total=items.reduce((sum,x)=>sum+Number(x.amount_huf||0),0);
+    let cursor=0;
+    const stops=items.slice(0,8).map((x,i)=>{
+      const pct=total?Number(x.amount_huf||0)/total*100:0;
+      const from=cursor;cursor+=pct;
+      return homeColors[i%homeColors.length]+" "+from+"% "+cursor+"%";
+    }).join(", ");
+    return {total,background:"conic-gradient("+(stops||"#2A3445 0 100%")+")"};
+  };
+  const purposeDonut=makeDonut(financeData?.categories||[]);
+  const merchantDonut=makeDonut(financeData?.merchants||[]);
 
   return <div className="page home-v2">
     <Header/>
@@ -103,10 +124,16 @@ function Home({go}:{go:(s:Screen)=>void}) {
     <div className="card home-finance-summary">
       <div className="row between"><div><b>Kiadások megoszlása</b><div className="label">Két nézet: mire és hol költöd</div></div><button className="ghost-btn" onClick={()=>go("finance")}>Részletek ›</button></div>
       <div className="home-donut-preview-grid">
-        <div className="home-donut-preview"><div className="empty-donut"><span>?</span></div><div><b>Mire költök?</b><div className="label">Élelmiszer, üzemanyag, rezsi…</div></div></div>
-        <div className="home-donut-preview"><div className="empty-donut alt"><span>?</span></div><div><b>Hol költök?</b><div className="label">Lidl, Penny, tankolás…</div></div></div>
+        <div className="home-donut-preview">
+          <div className="home-real-donut" style={{background:purposeDonut.background}}><span>{purposeDonut.total?money(purposeDonut.total):"—"}</span></div>
+          <div><b>Mire költök?</b><div className="label">{purposeDonut.total?(financeData?.categories||[]).slice(0,3).map(x=>x.name).join(" · "):"Még nincs kiadási adat"}</div></div>
+        </div>
+        <div className="home-donut-preview">
+          <div className="home-real-donut" style={{background:merchantDonut.background}}><span>{merchantDonut.total?money(merchantDonut.total):"—"}</span></div>
+          <div><b>Hol költök?</b><div className="label">{merchantDonut.total?(financeData?.merchants||[]).slice(0,3).map(x=>x.name).join(" · "):"Még nincs kereskedői adat"}</div></div>
+        </div>
       </div>
-      <div className="finance-source-note">A valódi költési arányok akkor jelennek meg, amikor tranzakciós adatforrást kötünk be. Nem mutatunk becsült vagy kitalált összegeket.</div>
+      <div className="finance-source-note">{purposeDonut.total||merchantDonut.total?"Az aktuális havi OTP/banki tranzakciókból számolva.":"A donutok automatikusan megtelnek, amint a banki tranzakciók beérkeznek."}</div>
     </div>
 
     <div className="section-title">Gyorsműveletek</div>
