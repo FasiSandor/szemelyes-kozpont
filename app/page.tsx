@@ -351,13 +351,17 @@ function Docs({cardOnly=false}:{cardOnly?:boolean}={}) {
   const [codeValue,setCodeValue]=useState("");
   const [codeType,setCodeType]=useState<"qr"|"barcode">("qr");
   const [cropTarget,setCropTarget]=useState<{slot:"front"|"back"|"extra";file:File;extraIndex?:number}|null>(null);
-  const [cropPos,setCropPos]=useState({x:0,y:0});
-  const [cropZoom,setCropZoom]=useState(1);
-  const [cropPixels,setCropPixels]=useState<Area|null>(null);
+  const [scanCorners,setScanCorners]=useState<ScanPoint[]>([
+    {x:.06,y:.06},{x:.94,y:.06},{x:.94,y:.94},{x:.06,y:.94}
+  ]);
+  const [dragCorner,setDragCorner]=useState<number|null>(null);
   const [pageByDoc,setPageByDoc]=useState<Record<string,number>>({});
+  const [printDoc,setPrintDoc]=useState<RemoteDocument|null>(null);
+  const [packageImporting,setPackageImporting]=useState(false);
   const frontRef=useRef<HTMLInputElement>(null);
   const backRef=useRef<HTMLInputElement>(null);
   const extraRef=useRef<HTMLInputElement>(null);
+  const packageRef=useRef<HTMLInputElement>(null);
   const cropImageUrl=useMemo(()=>cropTarget?URL.createObjectURL(cropTarget.file):"",[cropTarget]);
   useEffect(()=>()=>{if(cropImageUrl)URL.revokeObjectURL(cropImageUrl);},[cropImageUrl]);
 
@@ -434,14 +438,14 @@ function Docs({cardOnly=false}:{cardOnly?:boolean}={}) {
 
   function chooseForScan(file:File|null,slot:"front"|"back"|"extra",extraIndex?:number){
     if(!file)return;
-    setCropPos({x:0,y:0});setCropZoom(1);setCropPixels(null);
+    setScanCorners([{x:.06,y:.06},{x:.94,y:.06},{x:.94,y:.94},{x:.06,y:.94}]);
     setCropTarget({slot,file,extraIndex});
   }
 
   async function acceptCrop(){
-    if(!cropTarget||!cropPixels)return;
+    if(!cropTarget)return;
     try{
-      const scanned=await cropFileToArea(cropTarget.file,cropPixels);
+      const scanned=await perspectiveCropFile(cropTarget.file,scanCorners);
       if(cropTarget.slot==="front")setFrontFile(scanned);
       else if(cropTarget.slot==="back")setBackFile(scanned);
       else{
@@ -456,17 +460,66 @@ function Docs({cardOnly=false}:{cardOnly?:boolean}={}) {
     }catch(e){setMessage(e instanceof Error?e.message:"A kivágás nem sikerült.");}
   }
 
-  function addExtraScans(files:File[]){
-    if(!files.length)return;
-    const first=files[0];
-    const base=extraFiles.length;
-    const rest=files.slice(1);
-    setExtraFiles(current=>[...current,...new Array(files.length).fill(null)].filter(Boolean) as File[]);
-    setCropTarget({slot:"extra",file:first,extraIndex:base});
-    if(rest.length){
-      // A további képeket egymás után a felhasználó a + További oldalak gombbal tudja pontosan levágni.
-      setMessage("Az első új oldalt vágd körbe; a további oldalakat ugyanígy add hozzá.");
-    }
+
+  async function uploadPreparedPage(file:File,pageIndex:number,side:"front"|"back",kindValue:string,titleValue:string,groupId?:string){
+    const prepare=await fetch("/api/documents",{
+      method:"POST",headers:{"content-type":"application/json"},
+      body:JSON.stringify({action:"prepare",familyMemberId:personId,title:titleValue,kind:kindValue,contentType:file.type||"image/jpeg",documentGroupId:groupId,side,pageIndex})
+    });
+    const prep=await prepare.json();
+    if(!prepare.ok)throw new Error(prep.error||"A feltöltés előkészítése nem sikerült.");
+    const upload=await fetch(prep.uploadUrl,{method:"PUT",headers:{"content-type":file.type||"image/jpeg"},body:file});
+    if(!upload.ok)throw new Error("A fotó feltöltése nem sikerült.");
+    const finalize=await fetch("/api/documents",{
+      method:"POST",headers:{"content-type":"application/json"},
+      body:JSON.stringify({
+        action:"finalize",familyMemberId:personId,title:titleValue,kind:kindValue,storageKey:prep.storageKey,
+        documentGroupId:prep.documentGroupId,side,pageIndex,issueDate:null,expiryDate:null,note:null,metadata:{}
+      })
+    });
+    const saved=await finalize.json();
+    if(!finalize.ok)throw new Error(saved.error||"Az irat mentése nem sikerült.");
+    return prep.documentGroupId as string;
+  }
+
+  async function importPreparedPackage(file:File){
+    if(!personId)return;
+    setPackageImporting(true);setMessage("Iratcsomag feldolgozása…");
+    try{
+      const JSZip=(await import("jszip")).default;
+      const zip=await JSZip.loadAsync(file);
+      const defs=[
+        ["identity","Személyazonosító igazolvány","01_szemelyi_elolap.jpg","02_szemelyi_hatulap.jpg"],
+        ["vehicle","Vezetői engedély","03_jogositvany_elolap.jpg","04_jogositvany_hatulap.jpg"],
+        ["student","Diákigazolvány","05_diakigazolvany_elolap.jpg","06_diakigazolvany_hatulap.jpg"],
+        ["address","Lakcímkártya","07_lakcimkartya_elolap.jpg","08_lakcimkartya_hatulap.jpg"],
+        ["tax","Adókártya","09_adokartya.jpg",null],
+        ["health","TAJ kártya","10_taj_kartya.jpg",null],
+        ["membership_card","ELTE Alumni kártya","11_elte_alumni_elolap.jpg","12_elte_alumni_hatulap.jpg"],
+        ["teacher","Pedagógusigazolvány","13_pedagogus_igazolvany_elolap.jpg","14_pedagogus_igazolvany_hatulap.jpg"]
+      ] as const;
+      let done=0;
+      for(const [kindValue,titleValue,frontName,backName] of defs){
+        if(documents.some(d=>d.family_member_id===personId&&d.title===titleValue))continue;
+        const frontEntry=zip.file(frontName);if(!frontEntry)continue;
+        const frontBlob=await frontEntry.async("blob");
+        const front=new File([frontBlob],frontName,{type:"image/jpeg"});
+        let groupId=await uploadPreparedPage(front,1,"front",kindValue,titleValue);
+        if(backName){
+          const backEntry=zip.file(backName);
+          if(backEntry){
+            const backBlob=await backEntry.async("blob");
+            const back=new File([backBlob],backName,{type:"image/jpeg"});
+            groupId=await uploadPreparedPage(back,2,"back",kindValue,titleValue,groupId);
+          }
+        }
+        done++;
+        setMessage("Iratcsomag import: "+done+"/8");
+      }
+      await loadDocuments();
+      setMessage("Az iratcsomag importálva.");
+    }catch(e){setMessage(e instanceof Error?e.message:"Az iratcsomag importja nem sikerült.");}
+    finally{setPackageImporting(false);}
   }
 
   async function saveDocument(){
