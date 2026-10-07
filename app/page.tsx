@@ -459,7 +459,7 @@ function Finance() {
       const res=await fetch("/api/finance/enablebanking",{method:"POST"});
       const json=await res.json();
       if(!res.ok)throw new Error(json.error||"Nem sikerült elindítani az OTP kapcsolatot.");
-      window.location.href=json.link;
+      window.location.href=json.url;
     }catch(e){
       setMessage(e instanceof Error?e.message:"OTP kapcsolat hiba.");
       setBankBusy(false);
