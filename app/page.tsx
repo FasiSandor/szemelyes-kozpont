@@ -764,7 +764,10 @@ function Docs({cardOnly=false}:{cardOnly?:boolean}={}) {
             <div className="title">{printStep==="select"?"Mit szeretnél nyomtatni?":printStep==="preview"?"A4 előnézet":"PDF előnézet"}</div>
             <div className="label">{selected?.display_name||"Családtag"}</div>
           </div>
-          <button className="ghost-btn" onClick={()=>{setPrintOpen(false);setPrintStep("select");setPrintPdfBlob(null);if(printPdfUrl)URL.revokeObjectURL(printPdfUrl);setPrintPdfUrl("");}}>Bezárás</button>
+          <button className="ghost-btn" onClick={()=>{
+            setPrintOpen(false);setPrintStep("select");setPrintPdfBlob(null);
+            if(printPdfUrl)URL.revokeObjectURL(printPdfUrl);setPrintPdfUrl("");
+          }}>Bezárás</button>
         </div>
 
         {printStep==="select"?<div className="print-select-body">
@@ -817,7 +820,6 @@ function Docs({cardOnly=false}:{cardOnly?:boolean}={}) {
             <div className="label">Ez kerül a papírra. A kártyák valós mérethez közeli méretben, nagyítás nélkül jelennek meg.</div>
             <button className="primary-btn" disabled={printBusy} onClick={buildPdfPreview}>{printBusy?"PDF készül…":"PDF előnézet ›"}</button>
           </div>
-        </div>}
         </div>:<div className="pdf-preview-body">
           <div className="print-preview-toolbar">
             <button className="ghost-btn" onClick={()=>setPrintStep("preview")}>‹ A4 előnézet</button>
@@ -830,7 +832,8 @@ function Docs({cardOnly=false}:{cardOnly?:boolean}={}) {
             <div className="label">Ezt a PDF-et küldjük tovább az iPhone megosztómenüjébe vagy a Nyomtatás funkcióba.</div>
             <button className="primary-btn" disabled={!printPdfBlob||printBusy} onClick={shareBuiltPdf}>{printBusy?"Megnyitás…":"Megosztás / Nyomtatás"}</button>
           </div>
-        </div>}      </div>
+        </div>}
+      </div>
     </div>}
 
   </div>
