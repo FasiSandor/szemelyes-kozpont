@@ -17,10 +17,33 @@ function extFor(type:string){
   return "jpg";
 }
 
-export async function GET(){
+export async function GET(request:Request){
   try{
     const {household}=await requireHouseholdRole(["owner","family"]);
     const db=sql();
+    const s3=storageClient();
+    const {searchParams}=new URL(request.url);
+    const imageKey=searchParams.get("imageKey");
+
+    if(imageKey){
+      const owned=await db`
+        select storage_key
+        from documents
+        where household_id=${household.id} and storage_key=${imageKey}
+        limit 1
+      `;
+      if(!owned.length) return new Response("Not found",{status:404});
+      const object=await s3.send(new GetObjectCommand({Bucket:DOCUMENT_BUCKET,Key:imageKey}));
+      const bytes=await object.Body?.transformToByteArray();
+      if(!bytes) return new Response("Not found",{status:404});
+      return new Response(bytes,{
+        headers:{
+          "content-type":object.ContentType||"image/jpeg",
+          "cache-control":"private, max-age=60"
+        }
+      });
+    }
+
     const rows=await db`
       select d.id,d.document_group_id,d.side,d.page_index,d.family_member_id,d.kind,d.title,
              d.issue_date,d.expiry_date,d.note,d.metadata,d.storage_key,d.created_at,
@@ -30,7 +53,6 @@ export async function GET(){
       where d.household_id=${household.id}
       order by d.created_at desc
     `;
-    const s3=storageClient();
     const photos=await Promise.all(rows.map(async (row:any)=>({
       ...row,
       imageUrl:await getSignedUrl(

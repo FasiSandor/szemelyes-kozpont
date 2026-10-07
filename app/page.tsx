@@ -579,7 +579,9 @@ function Docs({cardOnly=false}:{cardOnly?:boolean}={}) {
 
   const printItems:A4PrintItem[]=personDocs.flatMap(doc=>
     (printSelected[doc.id]||[]).map(index=>({
-      imageUrl:doc.pages?.[index]?.imageUrl||"",
+      imageUrl:doc.pages?.[index]?.storageKey
+        ?"/api/documents?imageKey="+encodeURIComponent(doc.pages[index].storageKey)
+        :(doc.pages?.[index]?.imageUrl||""),
       title:doc.title,
       label:index===0?"Előlap":index===1?"Hátlap":(index+1)+". oldal",
       isCard:cardVisualKinds.has(doc.kind)
