@@ -355,6 +355,7 @@ function Docs({cardOnly=false}:{cardOnly?:boolean}={}) {
     {x:.06,y:.06},{x:.94,y:.06},{x:.94,y:.94},{x:.06,y:.94}
   ]);
   const [dragCorner,setDragCorner]=useState<number|null>(null);
+  const [scanAspect,setScanAspect]=useState(3/4);
   const [pageByDoc,setPageByDoc]=useState<Record<string,number>>({});
   const [printDoc,setPrintDoc]=useState<RemoteDocument|null>(null);
   const [packageImporting,setPackageImporting]=useState(false);
@@ -662,7 +663,7 @@ function Docs({cardOnly=false}:{cardOnly?:boolean}={}) {
     {cropTarget&&<div className="scanner-overlay">
       <div className="scanner-shell">
         <div className="row between scanner-head"><div><b>Négy sarok beállítása</b><div className="label">Húzd a 4 pontot pontosan az irat sarkaira</div></div><button className="ghost-btn" onClick={()=>setCropTarget(null)}>Mégse</button></div>
-        <div className="scanner-stage four-corner-stage"
+        <div className="scanner-stage four-corner-stage" style={{aspectRatio:String(scanAspect)}}
           onPointerMove={e=>{
             if(dragCorner===null)return;
             const rect=e.currentTarget.getBoundingClientRect();
@@ -674,7 +675,7 @@ function Docs({cardOnly=false}:{cardOnly?:boolean}={}) {
           onPointerCancel={()=>setDragCorner(null)}
           onPointerLeave={()=>setDragCorner(null)}
         >
-          <img src={cropImageUrl} alt="Körbevágandó irat"/>
+          <img src={cropImageUrl} alt="Körbevágandó irat" onLoad={e=>{const img=e.currentTarget;if(img.naturalHeight)setScanAspect(img.naturalWidth/img.naturalHeight);}}/>
           <svg className="scan-polygon" viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-hidden="true">
             <polygon points={scanCorners.map(p=>(p.x*1000)+","+(p.y*1000)).join(" ")}/>
           </svg>
