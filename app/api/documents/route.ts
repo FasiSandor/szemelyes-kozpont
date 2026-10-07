@@ -6,9 +6,9 @@ import { DOCUMENT_BUCKET, storageClient } from "@/lib/neon/storage";
 
 const validKinds=new Set([
   "identity","address","tax","health","student","teacher",
-  "vehicle","insurance","contract","shopping_card","other"
+  "vehicle","insurance","contract","bank_card","loyalty_card","membership_card","shopping_card","other"
 ]);
-const validSides=new Set(["front","back"]);
+const validSides=new Set(["front","back","page"]);
 
 function extFor(type:string){
   if(type==="image/png") return "png";
@@ -22,8 +22,8 @@ export async function GET(){
     const {household}=await requireHouseholdRole(["owner","family"]);
     const db=sql();
     const rows=await db`
-      select d.id,d.document_group_id,d.side,d.family_member_id,d.kind,d.title,
-             d.issue_date,d.expiry_date,d.note,d.storage_key,d.created_at,
+      select d.id,d.document_group_id,d.side,d.page_index,d.family_member_id,d.kind,d.title,
+             d.issue_date,d.expiry_date,d.note,d.metadata,d.storage_key,d.created_at,
              fm.display_name as member_name
       from documents d
       join family_members fm on fm.id=d.family_member_id
@@ -51,21 +51,32 @@ export async function GET(){
         issue_date:photo.issue_date,
         expiry_date:photo.expiry_date,
         note:photo.note,
+        metadata:photo.metadata||{},
         created_at:photo.created_at,
         member_name:photo.member_name,
         front:null,
         back:null,
+        pages:[],
       };
-      current[photo.side==="back"?"back":"front"]={
+      const item={
         id:photo.id,
         imageUrl:photo.imageUrl,
         storageKey:photo.storage_key,
+        pageIndex:Number(photo.page_index||1),
+        side:photo.side,
       };
+      current.pages.push(item);
+      if(photo.side==="front") current.front=item;
+      if(photo.side==="back") current.back=item;
       if(new Date(photo.created_at)>new Date(current.created_at)) current.created_at=photo.created_at;
       grouped.set(key,current);
     }
 
-    return Response.json({documents:Array.from(grouped.values())});
+    const documents=Array.from(grouped.values()).map((doc:any)=>({
+      ...doc,
+      pages:(doc.pages||[]).sort((a:any,b:any)=>a.pageIndex-b.pageIndex)
+    }));
+    return Response.json({documents});
   }catch(error){
     if(error instanceof Error&&error.message==="UNAUTHORIZED"){
       return Response.json({error:"Nincs bejelentkezve."},{status:401});
@@ -95,6 +106,8 @@ export async function POST(request:Request){
       note?:string|null;
       documentGroupId?:string;
       side?:string;
+      pageIndex?:number;
+      metadata?:Record<string,unknown>;
     };
     const db=sql();
 
@@ -110,8 +123,9 @@ export async function POST(request:Request){
       if(!allowed.length) return Response.json({error:"Nincs hozzáférés ehhez a családtaghoz."},{status:403});
 
       const groupId=body.documentGroupId||crypto.randomUUID();
-      const side=validSides.has(body.side||"")?body.side!:"front";
-      const key=`${household.id}/${body.familyMemberId}/${groupId}-${side}-${crypto.randomUUID()}.${extFor(body.contentType)}`;
+      const side=validSides.has(body.side||"")?body.side!:"page";
+      const pageIndex=Math.max(1,Math.min(999,Number(body.pageIndex||1)));
+      const key=`${household.id}/${body.familyMemberId}/${groupId}-p${pageIndex}-${side}-${crypto.randomUUID()}.${extFor(body.contentType)}`;
       const s3=storageClient();
       const uploadUrl=await getSignedUrl(
         s3,
@@ -122,7 +136,7 @@ export async function POST(request:Request){
         }),
         {expiresIn:300}
       );
-      return Response.json({documentGroupId:groupId,storageKey:key,uploadUrl,side});
+      return Response.json({documentGroupId:groupId,storageKey:key,uploadUrl,side,pageIndex});
     }
 
     if(body.action==="finalize"){
@@ -134,18 +148,20 @@ export async function POST(request:Request){
         return Response.json({error:"Érvénytelen tárhely-kulcs."},{status:403});
       }
       const kind=validKinds.has(body.kind||"")?body.kind!:"other";
-      const side=validSides.has(body.side||"")?body.side!:"front";
+      const side=validSides.has(body.side||"")?body.side!:"page";
+      const pageIndex=Math.max(1,Math.min(999,Number(body.pageIndex||1)));
+      const metadata=body.metadata&&typeof body.metadata==="object"?body.metadata:{};
 
       const rows=await db`
         insert into documents(
-          household_id,family_member_id,document_group_id,side,kind,title,
-          storage_bucket,storage_key,issue_date,expiry_date,note,created_by_user_id
+          household_id,family_member_id,document_group_id,side,page_index,kind,title,
+          storage_bucket,storage_key,issue_date,expiry_date,note,metadata,created_by_user_id
         ) values(
-          ${household.id},${body.familyMemberId},${body.documentGroupId}::uuid,${side},
+          ${household.id},${body.familyMemberId},${body.documentGroupId}::uuid,${side},${pageIndex},
           ${kind}::document_kind,${body.title.trim()},${DOCUMENT_BUCKET},${body.storageKey},
-          ${body.issueDate||null},${body.expiryDate||null},${body.note||null},${user.id}
+          ${body.issueDate||null},${body.expiryDate||null},${body.note||null},${JSON.stringify(metadata)}::jsonb,${user.id}
         )
-        returning id,document_group_id,side,created_at
+        returning id,document_group_id,side,page_index,created_at
       `;
       return Response.json({document:rows[0]},{status:201});
     }
