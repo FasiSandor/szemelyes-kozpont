@@ -23,10 +23,11 @@ function Icon({children,tone=""}:{children:React.ReactNode;tone?:string}) {
   return <div className={"icon "+tone}>{children}</div>
 }
 function Header({title="Személyes Központ",back,onBack}:{title?:string;back?:boolean;onBack?:()=>void}) {
+  const today=new Intl.DateTimeFormat("hu-HU",{year:"numeric",month:"long",day:"numeric",weekday:"long"}).format(new Date());
   return <div className="topbar">
     <div className="row">
       {back && <button className="ghost-btn" onClick={onBack} aria-label="Vissza">‹</button>}
-      <div><div className="eyebrow">2026. október 6.</div><div className="title">{title}</div></div>
+      <div><div className="eyebrow">{today}</div><div className="title">{title}</div></div>
     </div>
     <div className="avatar">SK</div>
   </div>
@@ -54,6 +55,33 @@ function Home({go}:{go:(s:Screen)=>void}) {
   const [previousFinanceData,setPreviousFinanceData]=useState<FinanceData|null>(null);
   const [homeFamilyCount,setHomeFamilyCount]=useState(0);
   const [homeDocuments,setHomeDocuments]=useState<Array<{id:string;title:string;member_name:string;expiry_date:string|null}>>([]);
+  useEffect(()=>{
+    let active=true;
+    const quickSync=async()=>{
+      try{
+        const last=Number(sessionStorage.getItem("nav-auto-sync-at")||0);
+        if(Date.now()-last<10*60*1000)return;
+        sessionStorage.setItem("nav-auto-sync-at",String(Date.now()));
+        const toDate=new Date();
+        const fromDate=new Date(toDate);
+        fromDate.setDate(fromDate.getDate()-4);
+        const iso=(d:Date)=>d.toISOString().slice(0,10);
+        const syncRes=await fetch("/api/nav/invoices",{
+          method:"POST",headers:{"content-type":"application/json"},
+          body:JSON.stringify({from:iso(fromDate),to:iso(toDate)})
+        });
+        if(!syncRes.ok)return;
+        const refreshed=await fetch("/api/nav/invoices?year="+new Date().getFullYear(),{cache:"no-store"}).then(r=>r.json());
+        if(active&&refreshed?.configured)setNavData(refreshed);
+      }catch{}
+    };
+    void quickSync();
+    const onVisible=()=>{if(document.visibilityState==="visible")void quickSync();};
+    document.addEventListener("visibilitychange",onVisible);
+    const timer=window.setInterval(()=>void quickSync(),15*60*1000);
+    return()=>{active=false;document.removeEventListener("visibilitychange",onVisible);window.clearInterval(timer);};
+  },[]);
+
   useEffect(()=>{
     let active=true;
     const current=new Date();
@@ -1228,6 +1256,34 @@ function IssuedInvoiceCenter({navMode=false}:{navMode?:boolean}){
   }
 
   useEffect(()=>{void load("");},[year]);
+
+  useEffect(()=>{
+    if(!data?.configured)return;
+    let active=true;
+    const quickSync=async()=>{
+      if(!active||syncing)return;
+      try{
+        const key="nav-invoice-auto-sync-at";
+        const last=Number(sessionStorage.getItem(key)||0);
+        if(Date.now()-last<10*60*1000)return;
+        sessionStorage.setItem(key,String(Date.now()));
+        const toDate=new Date();
+        const fromDate=new Date(toDate);fromDate.setDate(fromDate.getDate()-4);
+        const iso=(d:Date)=>d.toISOString().slice(0,10);
+        const res=await fetch("/api/nav/invoices",{
+          method:"POST",headers:{"content-type":"application/json"},
+          body:JSON.stringify({from:iso(fromDate),to:iso(toDate)})
+        });
+        if(res.ok&&active)await load(q);
+      }catch{}
+    };
+    void quickSync();
+    const onVisible=()=>{if(document.visibilityState==="visible")void quickSync();};
+    document.addEventListener("visibilitychange",onVisible);
+    const timer=window.setInterval(()=>void quickSync(),15*60*1000);
+    return()=>{active=false;document.removeEventListener("visibilitychange",onVisible);window.clearInterval(timer);};
+  },[data?.configured,year]);
+
 
   async function saveConfig(){
     setMessage("NAV kapcsolat mentése…");
