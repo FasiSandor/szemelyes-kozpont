@@ -126,83 +126,104 @@ function Home({go}:{go:(s:Screen)=>void}) {
     .sort((a,b)=>a.days-b.days)
     .slice(0,5);
 
-  return <div className="page home-v2">
-    <Header/>
-    <div className="notice home-upcoming">
-      <div className="row between"><div><b>Közelgő</b><div className="subtle" style={{marginTop:4}}>Teendők, iratlejáratok és határidők</div></div><span className="badge amber">{homeExpiringDocs.length?homeExpiringDocs.length+" irat figyelmet kér":"Áttekintés"}</span></div>
-      <div className="home-upcoming-list">
-        {homeExpiringDocs.map(doc=><button className="row home-upcoming-row" key={doc.id} onClick={()=>go("docs")}>
-          <Icon tone={doc.days<0?"red":"amber"}>▣</Icon>
-          <div className="grow"><b>{doc.title}</b><div className="label">{doc.member_name} · {doc.days<0?"lejárt "+Math.abs(doc.days)+" napja":doc.days===0?"ma jár le":doc.days+" nap múlva lejár"}</div></div>
-          <span className="chev">›</span>
-        </button>)}
-        <button className="row home-upcoming-row" onClick={()=>go("tasks")}><Icon tone="amber">◷</Icon><div className="grow"><b>Teendők</b><div className="label">Személyes és családi feladatok</div></div><span className="chev">›</span></button>
-        <button className="row home-upcoming-row" onClick={()=>go("nav")}><Icon tone="amber">N</Icon><div className="grow"><b>NAV és vállalkozási határidők</b><div className="label">Adó, bevallás, gépjármű és egyéb határidők</div></div><span className="chev">›</span></button>
+  const homeToday=new Intl.DateTimeFormat("hu-HU",{year:"numeric",month:"long",day:"numeric",weekday:"long"}).format(new Date());
+  const hour=new Date().getHours();
+  const greeting=hour<10?"Jó reggelt!":hour<18?"Szép napot!":"Jó estét!";
+  const attentionCount=homeExpiringDocs.length;
+  const recentInvoiceCount=Number(navSummary?.issued_count||0);
+  const maxFlow=Math.max(1,prevIncome,homeIncome,prevExpense,homeExpense);
+  const trendBars=[
+    {label:"Előző bev.",value:prevIncome,tone:"income"},
+    {label:"Most bev.",value:homeIncome,tone:"income"},
+    {label:"Előző kiad.",value:prevExpense,tone:"expense"},
+    {label:"Most kiad.",value:homeExpense,tone:"expense"},
+  ];
+
+  return <div className="page home-v3">
+    <section className="home-mobile-head">
+      <div className="home-user-badge">SK</div>
+      <div className="home-head-copy">
+        <div className="home-greeting">{greeting}</div>
+        <div className="home-date">{homeToday}</div>
       </div>
+      <button className="home-alert-button" onClick={()=>go("tasks")} aria-label="Értesítések">
+        ♧{attentionCount>0&&<span>{Math.min(attentionCount,9)}</span>}
+      </button>
+    </section>
+
+    <button className="home-today-panel" onClick={()=>go("tasks")}>
+      <div className="home-today-title">
+        <span>Ma</span>
+        <small>{attentionCount?attentionCount+" figyelmet kérő tétel":"Nincs sürgős teendő"}</small>
+      </div>
+      <div className="home-today-items">
+        {homeExpiringDocs.slice(0,2).map(doc=><div className="home-today-row" key={doc.id}>
+          <span className={"home-dot "+(doc.days<0?"danger":"amber")}>!</span>
+          <div><b>{doc.title}</b><small>{doc.days<0?"Lejárt "+Math.abs(doc.days)+" napja":doc.days===0?"Ma jár le":doc.days+" nap múlva lejár"}</small></div>
+        </div>)}
+        {homeExpiringDocs.length===0&&<div className="home-today-row"><span className="home-dot green">✓</span><div><b>Minden rendben</b><small>Nincs közeli iratlejárat.</small></div></div>}
+      </div>
+    </button>
+
+    <div className="home-dashboard-grid">
+      <button className="home-dashboard-card blue" onClick={()=>go("business")}>
+        <div className="home-card-top"><span className="home-card-icon">▥</span><span>Vállalkozás</span></div>
+        <small>Idei kiszámlázott bruttó</small>
+        <strong>{navReady?money(navSummary?.issued_gross_huf):"NAV kapcsolat"}</strong>
+        <div className="home-card-foot">{navReady?recentInvoiceCount+" számla idén":"Kapcsolat beállítása"} <span>›</span></div>
+      </button>
+
+      <button className="home-dashboard-card green" onClick={()=>go("nav")}>
+        <div className="home-card-top"><span className="home-card-icon">N</span><span>NAV</span></div>
+        <small>{navReady?"Kapcsolat aktív":"Kapcsolat nincs kész"}</small>
+        <strong>{navReady?money(totalRevenue):"—"}</strong>
+        <div className="home-card-foot">{navReady?totalInvoices+" számla összesen":"Beállítás"} <span>›</span></div>
+      </button>
+
+      <button className="home-dashboard-card cyan" onClick={()=>go("finance")}>
+        <div className="home-card-top"><span className="home-card-icon">◴</span><span>Pénzügyek</span></div>
+        <small>Aktuális havi kiadás</small>
+        <strong>{money(homeExpense)}</strong>
+        <div className={"home-card-foot "+(expenseDelta!==null&&expenseDelta>0?"bad":"")}>
+          {expenseDelta===null?"Nincs előző havi összevetés":(expenseDelta>=0?"+":"")+expenseDelta+"% előző hóhoz"} <span>›</span>
+        </div>
+      </button>
+
+      <button className="home-dashboard-card violet" onClick={()=>go("docs")}>
+        <div className="home-card-top"><span className="home-card-icon">♙</span><span>Család</span></div>
+        <small>Digitális irattár</small>
+        <strong>{homeFamilyCount||1} profil</strong>
+        <div className="home-card-foot">{homeDocuments.length} irat · {attentionCount} figyelmet kér <span>›</span></div>
+      </button>
     </div>
 
-    <div className="section-title">Áttekintés</div>
-    <div className="grid hero-grid home-overview-grid">
-      <button className="card active home-overview-card" onClick={()=>go("business")}>
-        <div className="row between"><Icon>▥</Icon><span className="badge">Vállalkozás</span></div>
-        <div className="label">Idei kiszámlázott bruttó</div>
-        <div className="metric">{navReady?money(navSummary?.issued_gross_huf):"NAV kapcsolat"}</div>
-        <div className="delta">{navReady?(navSummary?.issued_count||0)+" számla idén":"Kapcsolat beállítása"}</div>
-      </button>
-      <button className="card home-overview-card" onClick={()=>go("nav")}>
-        <div className="row between"><Icon tone={navReady?"green":""}>N</Icon><span className={"badge "+(navReady?"green":"amber")}>{navReady?"Kapcsolva":"Nincs bekötve"}</span></div>
-        <div className="label">NAV számlatörténet</div>
-        <div className="metric">{navReady?money(totalRevenue):"—"}</div>
-        <div className="delta">{navReady?totalInvoices+" számla összesen":"Technikai felhasználó szükséges"}</div>
-      </button>
-      <button className="card home-overview-card" onClick={()=>go("docs")}>
-        <div className="row between"><Icon tone="cyan">♙</Icon><span className="badge">Család</span></div>
-        <div className="label">Családi irattár</div>
-        <div className="metric">{homeFamilyCount||1} profil</div>
-        <div className="delta">{homeDocuments.length?homeDocuments.length+" irat · "+homeExpiringDocs.length+" figyelmet kér":"Okmányok és lejáratok"}</div>
-      </button>
-      <button className="card home-overview-card" onClick={()=>go("finance")}>
-        <div className="row between"><Icon>◴</Icon><span className="badge">Pénzügyek</span></div>
-        <div className="label">Havi pénzügyi kép</div>
-        <div className="metric">Megoszlások</div>
-        <div className="delta">Mire költök? · Hol költök?</div>
-      </button>
-    </div>
-
-    <div className="section-title">Havi pénzügyi kép</div>
-    <div className="card home-finance-summary home-cashflow-summary">
-      <div className="row between">
-        <div><b>Aktuális havi pénzmozgás</b><div className="label">Gyors összefoglaló · részletek a Pénzügyekben</div></div>
-        <button className="ghost-btn" onClick={()=>go("finance")}>Részletek ›</button>
+    <section className="home-finance-card">
+      <div className="home-finance-head">
+        <div><span>Havi pénzügyi áttekintés</span><small>Bevétel és kiadás</small></div>
+        <button onClick={()=>go("finance")}>Részletek ›</button>
       </div>
-
-      <div className="home-cashflow-kpis">
-        <div><span>Bevétel</span><b className="finance-positive">{money(homeIncome)}</b>{incomeDelta!==null&&<small className={incomeDelta>=0?"up":"down"}>{incomeDelta>=0?"+":""}{incomeDelta}% előző hóhoz</small>}</div>
-        <div><span>Kiadás</span><b>{money(homeExpense)}</b>{expenseDelta!==null&&<small className={expenseDelta<=0?"up":"down"}>{expenseDelta>=0?"+":""}{expenseDelta}% előző hóhoz</small>}</div>
-        <div><span>Maradvány</span><b className={homeBalance>=0?"finance-positive":"finance-negative"}>{money(homeBalance)}</b><small>{homeBalance>=0?"pozitív egyenleg":"negatív egyenleg"}</small></div>
+      <div className="home-finance-kpis">
+        <div><span>Bevétel</span><b>{money(homeIncome)}</b><small className={incomeDelta!==null&&incomeDelta<0?"bad":"good"}>{incomeDelta===null?"—":(incomeDelta>=0?"+":"")+incomeDelta+"%"}</small></div>
+        <div><span>Kiadás</span><b>{money(homeExpense)}</b><small className={expenseDelta!==null&&expenseDelta>0?"bad":"good"}>{expenseDelta===null?"—":(expenseDelta>=0?"+":"")+expenseDelta+"%"}</small></div>
       </div>
-
-      <div className="home-flow-bars">
-        <div className="home-flow-row"><span>Bevétel</span><div className="home-flow-track"><i className="income" style={{width:Math.max(4,homeIncome/flowMax*100)+"%"}}/></div><b>{money(homeIncome)}</b></div>
-        <div className="home-flow-row"><span>Kiadás</span><div className="home-flow-track"><i className="expense" style={{width:Math.max(4,homeExpense/flowMax*100)+"%"}}/></div><b>{money(homeExpense)}</b></div>
+      <div className="home-mini-chart" aria-label="Előző és aktuális havi pénzmozgás">
+        {trendBars.map((bar,i)=><div className="home-mini-bar-col" key={bar.label}>
+          <div className="home-mini-bar-track"><i className={bar.tone} style={{height:Math.max(5,bar.value/maxFlow*100)+"%"}}/></div>
+          <small>{i%2===0?"Előző":"Most"}</small>
+        </div>)}
       </div>
-
-      <div className="home-top-spend">
-        <div className="row between"><b>Top kiadási területek</b><span className="label">aktuális hónap</span></div>
-        {topCategories.length?topCategories.map((x,i)=><div className="home-top-row" key={x.name}>
-          <div className="row between"><span>{i+1}. {x.name}</span><b>{money(x.amount_huf)}</b></div>
-          <div className="home-top-track"><i style={{width:Math.max(5,Number(x.amount_huf||0)/topCategoryMax*100)+"%"}}/></div>
-        </div>):<div className="label">Még nincs kiadási adat ebben a hónapban.</div>}
+      <div className="home-finance-balance">
+        <span>Havi maradvány</span>
+        <b className={homeBalance>=0?"good":"bad"}>{money(homeBalance)}</b>
       </div>
-    </div>
+    </section>
 
-    <div className="section-title">Gyorsműveletek</div>
-    <div className="quick-actions-grid">
-      <button className="list-item" onClick={()=>go("docs")}><Icon>▤</Icon><div className="grow"><b>Irat</b><div className="label">Fotó / feltöltés</div></div><span className="chev">›</span></button>
-      <button className="list-item" onClick={()=>go("tasks")}><Icon>✓</Icon><div className="grow"><b>Teendő</b><div className="label">Lista megnyitása</div></div><span className="chev">›</span></button>
-      <button className="list-item" onClick={()=>go("nav")}><Icon>N</Icon><div className="grow"><b>NAV</b><div className="label">Számlák és határidők</div></div><span className="chev">›</span></button>
-      <button className="list-item" onClick={()=>go("vault")}><Icon>⌘</Icon><div className="grow"><b>Jelszótár</b><div className="label">Titkosított Vault</div></div><span className="chev">›</span></button>
-    </div>
+    <section className="home-shortcuts">
+      <button onClick={()=>go("docs")}><span>▤</span><b>Iratok</b></button>
+      <button onClick={()=>go("vault")}><span>⌘</span><b>Jelszótár</b></button>
+      <button onClick={()=>go("tasks")}><span>✓</span><b>Teendők</b></button>
+      <button onClick={()=>go("more")}><span>☰</span><b>Több</b></button>
+    </section>
   </div>
 }
 
