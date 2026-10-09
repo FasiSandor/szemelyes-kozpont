@@ -680,40 +680,59 @@ function Docs({cardOnly=false}:{cardOnly?:boolean}={}) {
     finally{setPrintBusy(false);}
   }
 
-  return <div className="page docs-v3">
-    <Header title={cardOnly?"Kártyák":"Család és iratok"}/>
+  return <div className="page docs-v4">
+    <section className="docs-mobile-head">
+      <div>
+        <div className="docs-head-kicker">{cardOnly?"Digitális tárca":"Családi központ"}</div>
+        <div className="docs-head-title">{cardOnly?"Kártyák":"Iratok és család"}</div>
+      </div>
+      <button className="docs-head-action" disabled={!personId} onClick={()=>setShowForm(true)}>＋</button>
+    </section>
 
-    <div className="profile-strip">
-      {family.map((p,i)=><button key={p.id} className={"profile "+(personId===p.id?"selected":"")} onClick={()=>setPersonId(p.id)} style={{border:0,background:"transparent",color:"inherit"}}>
-        <div className="picon profile-photo"><span className="profile-fallback">{i===0?"●":i===1?"◆":"○"}</span>{p.profile_url&&<img src={p.profile_url} alt={p.display_name} onError={e=>{e.currentTarget.style.display="none";}}/>}</div><small>{p.display_name}</small>
+    <section className="docs-family-strip">
+      {family.map((p,i)=><button key={p.id} className={"docs-family-person "+(personId===p.id?"selected":"")} onClick={()=>setPersonId(p.id)}>
+        <span className="docs-family-avatar">
+          <span>{i===0?"●":i===1?"◆":"○"}</span>
+          {p.profile_url&&<img src={p.profile_url} alt={p.display_name} onError={e=>{e.currentTarget.style.display="none";}}/>}
+        </span>
+        <b>{p.display_name}</b>
       </button>)}
-      {!cardOnly&&<button className="profile" onClick={addFamilyMember} style={{border:0,background:"transparent",color:"inherit"}}><div className="picon">＋</div><small>Hozzáadás</small></button>}
+      {!cardOnly&&<button className="docs-family-person add" onClick={addFamilyMember}><span className="docs-family-avatar">＋</span><b>Hozzáadás</b></button>}
+    </section>
+
+    <section className="docs-person-card">
+      <div className="docs-person-main">
+        <div className="docs-person-photo">
+          <span>{selected?.display_name?.slice(0,1)?.toUpperCase()||"?"}</span>
+          {selected?.profile_url&&<img src={selected.profile_url} alt={selected.display_name} onError={e=>{e.currentTarget.style.display="none";}}/>}
+        </div>
+        <div className="docs-person-copy">
+          <small>{cardOnly?"Kiválasztott kártyatulajdonos":"Kiválasztott családtag"}</small>
+          <strong>{selected?.display_name||"Családi tér"}</strong>
+          <span>{selected?.relation||"Családtag"} · {personDocs.length} {cardOnly?"kártya":"irat"}</span>
+        </div>
+      </div>
+      {!cardOnly&&<><input id="profile-photo-input" ref={profileRef} className="sr-only-file" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" onClick={e=>{e.currentTarget.value="";}} onChange={e=>{const f=e.target.files?.[0];if(f)void uploadProfilePhoto(f);}}/><label className={"docs-photo-edit "+(!personId?"disabled":"")} htmlFor={personId?"profile-photo-input":undefined}>Profilkép</label></>}
+    </section>
+
+    <section className="docs-stat-grid">
+      <button className={"docs-stat "+(docFilter==="all"?"selected":"")} onClick={()=>setDocFilter("all")}><span>Összes</span><b>{personDocs.length}</b><small>{cardOnly?"kártya":"irat"}</small></button>
+      <button className={"docs-stat good "+(docFilter==="valid"?"selected":"")} onClick={()=>setDocFilter("valid")}><span>Rendben</span><b>{validCount}</b><small>érvényes</small></button>
+      <button className={"docs-stat amber "+(docFilter==="expiring"?"selected":"")} onClick={()=>setDocFilter("expiring")}><span>Hamarosan</span><b>{expiringCount}</b><small>30 napon belül</small></button>
+      <button className={"docs-stat danger "+(docFilter==="expired"?"selected":"")} onClick={()=>setDocFilter("expired")}><span>Lejárt</span><b>{expiredCount}</b><small>teendő</small></button>
+    </section>
+
+    <section className="docs-quick-actions">
+      <button className="primary" disabled={!personId} onClick={()=>setShowForm(true)}><span>＋</span><b>{cardOnly?"Új kártya":"Új irat"}</b></button>
+      <button disabled={!personDocs.length} onClick={()=>{setPrintSelected({});setPrintStep("select");setPrintOpen(true);}}><span>▤</span><b>Nyomtatás</b></button>
+    </section>
+
+    <div className="docs-list-head">
+      <div><b>{docFilter==="all"?"Minden tétel":docFilter==="valid"?"Rendben":docFilter==="expiring"?"Hamarosan lejár":"Lejárt"}</b><small>{filteredDocs.length} találat</small></div>
+      <span>{cardOnly?"Kártyatárca":"Digitális irattartó"}</span>
     </div>
 
-    <div className="row between docs-section-head">
-      <div><div className="section-title" style={{margin:0}}>{cardOnly?"Kártyatárca":"Digitális irattartó"}</div><div className="label">{selected?selected.display_name+" · "+(selected.relation||"Családtag"):"Családi tér"}</div></div>
-      <div className="row">
-        {!cardOnly&&<><input id="profile-photo-input" ref={profileRef} className="sr-only-file" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" onClick={e=>{e.currentTarget.value="";}} onChange={e=>{const f=e.target.files?.[0];if(f)void uploadProfilePhoto(f);}}/><label className={"ghost-btn profile-upload-btn "+(!personId?"disabled":"")} htmlFor={personId?"profile-photo-input":undefined}>◉ Profilkép</label></>}
-        <button className="ghost-btn" disabled={!personDocs.length} onClick={()=>{setPrintSelected({});setPrintStep("select");setPrintOpen(true);}}>▤ Nyomtatás</button>
-        <button className="primary-btn" disabled={!personId} onClick={()=>setShowForm(true)}>＋ {cardOnly?"Új kártya":"Új irat"}</button>
-      </div>
-    </div>
-
-    <div className="docs-toolbar card">
-      <div className="docs-counts">
-        <span><b>{personDocs.length}</b> {cardOnly?"kártya":"irat"}</span>
-        <span className={expiringCount?"warn":""}><b>{expiringCount}</b> hamarosan</span>
-        <span className={expiredCount?"danger":""}><b>{expiredCount}</b> lejárt</span>
-      </div>
-      <div className="docs-filter-segment">
-        <button className={docFilter==="all"?"on":""} onClick={()=>setDocFilter("all")}>Mind</button>
-        <button className={docFilter==="valid"?"on":""} onClick={()=>setDocFilter("valid")}>Rendben</button>
-        <button className={docFilter==="expiring"?"on":""} onClick={()=>setDocFilter("expiring")}>Hamarosan</button>
-        <button className={docFilter==="expired"?"on":""} onClick={()=>setDocFilter("expired")}>Lejárt</button>
-      </div>
-    </div>
-
-    {message&&<div className="auth-message" style={{marginTop:12}}>{message}</div>}
+    {message&&<div className="auth-message docs-message">{message}</div>}
 
     {showForm&&<div className="card doc-editor folder-editor">
       <div className="row between"><div><b>{cardOnly?"Új kártya":"Új irat"}</b><div className="label">{selected?.display_name}</div></div><button className="ghost-btn" onClick={resetForm}>Bezárás</button></div>
