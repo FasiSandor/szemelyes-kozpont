@@ -1697,8 +1697,8 @@ function NavDeadlines(){
   {past.length>0&&<><div className="section-title">Legutóbbi határidők</div><div className="deadline-past">{past.map(x=><div className="list-item" key={x.id}><Icon tone="green">✓</Icon><div className="grow"><b>{x.title}</b><div className="label">{new Date(x.date+"T00:00:00").toLocaleDateString("hu-HU")} · {x.category}</div></div></div>)}</div></>}
  </div>
 }
-function NavPage(){
- const [tab,setTab]=useState<"invoices"|"account"|"deadlines"|"returns">("invoices");
+function NavPage({initialTab="invoices"}:{initialTab?:"invoices"|"account"|"deadlines"|"returns"}){
+ const [tab,setTab]=useState<"invoices"|"account"|"deadlines"|"returns">(initialTab);
  return <div className="page"><Header title="NAV"/>
   <div className="tabs nav-main-tabs">
    <button className={"tab "+(tab==="invoices"?"on":"")} onClick={()=>setTab("invoices")}>Számlák</button>
@@ -1940,21 +1940,28 @@ function More({go}:{go:(s:Screen)=>void}){
 }
 export default function Page(){
  const [screen,setScreen]=useState<Screen>("home");
+ const [navInitialTab,setNavInitialTab]=useState<"invoices"|"account"|"deadlines"|"returns">("invoices");
  useEffect(()=>{
   const params=new URLSearchParams(window.location.search);
   if(params.get("open")==="finance"){
     setScreen("finance");
     const bank=params.get("bank");
     if(bank)window.history.replaceState({},document.title,window.location.pathname);
+    return;
+  }
+  if(params.get("screen")==="nav"){
+    const tab=params.get("tab");
+    if(tab==="account"||tab==="deadlines"||tab==="returns"||tab==="invoices")setNavInitialTab(tab);
+    setScreen("nav");
   }
  },[]);
  useEffect(()=>{window.scrollTo({top:0,behavior:"auto"});},[screen]);
  const content=useMemo(()=>{
   switch(screen){
    case "docs":return <Docs/>;case "finance":return <Finance/>;case "tasks":return <Tasks/>;case "more":return <More go={setScreen}/>;
-   case "business":return <Business/>;case "nav":return <NavPage/>;case "vault":return <SecureGate scope="vault"><Vault/></SecureGate>;case "cards":return <Cards/>;
+   case "business":return <Business/>;case "nav":return <NavPage initialTab={navInitialTab}/>;case "vault":return <SecureGate scope="vault"><Vault/></SecureGate>;case "cards":return <Cards/>;
    case "vehicles":return <Vehicles/>;case "reports":return <Reports/>;default:return <Home go={setScreen}/>;
   }
- },[screen]);
+ },[screen,navInitialTab]);
  return <SecureGate scope="app"><main className="app"><div className="shell">{content}</div><ScrollTopButton/><BottomNav screen={screen} setScreen={setScreen}/></main></SecureGate>
 }
