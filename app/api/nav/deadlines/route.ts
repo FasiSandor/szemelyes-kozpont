@@ -1,5 +1,33 @@
 const SOURCE="https://nav.gov.hu/print/nyomtatvanyok/letoltesek/nyomtatvanykitolto_programok/nyomtatvanykitolto_programok_nav/2658";
 const CALENDAR="https://ugyfelportal.nav.gov.hu/";
+const CORE="https://calendar-core.vercel.app/api/source-events";
+
+async function syncCalendarCore(items:any[]){
+  const key=process.env.CALENDAR_SOURCE_API_KEY||"";
+  if(!key)return;
+  for(const x of items){
+    try{
+      await fetch(CORE,{
+        method:"POST",
+        headers:{"content-type":"application/json","x-calendar-source-key":key},
+        body:JSON.stringify({
+          title:x.title,date:x.date,allDay:true,timezone:"Europe/Budapest",
+          category:"work",location:"",note:x.detail,
+          sourceApp:"szemelyes-kozpont",sourceRecordId:x.id,
+          sourceUrl:"https://szemelyes-kozpont.vercel.app/?screen=nav&tab=deadlines",
+          metadata:{
+            linkedApp:"szemelyes-kozpont",
+            linkedLabel:"Személyes Központ · NAV Határidők",
+            linkedUrl:"https://szemelyes-kozpont.vercel.app/?screen=nav&tab=deadlines",
+            category:x.category,source:x.source
+          }
+        }),
+        cache:"no-store"
+      });
+    }catch{}
+  }
+}
+
 
 function normalizeDate(value:string){
   const m=value.match(/(20\d{2})\.(\d{2})\.(\d{2})\.?/);
@@ -68,11 +96,13 @@ export async function GET(){
     }
   ];
 
+  const deadlines=[...quarterly,...annual].sort((a,b)=>a.date.localeCompare(b.date));
+  await syncCalendarCore(deadlines);
   return Response.json({
     live,
     sourceUrl:SOURCE,
     calendarUrl:CALENDAR,
     fetchedAt:new Date().toISOString(),
-    deadlines:[...quarterly,...annual].sort((a,b)=>a.date.localeCompare(b.date))
+    deadlines
   });
 }
