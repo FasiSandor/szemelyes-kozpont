@@ -2,7 +2,7 @@ name: Build check
 
 on:
   push:
-    branches: [main, calendar-core-backup-20261012]
+    branches: [main, calendar-core-backup-20261012, nav-calendar-sync-v1]
   pull_request:
     branches: [main]
 
