@@ -1698,7 +1698,7 @@ function NavDeadlines(){
  </div>
 }
 function NavPage(){
- const [tab,setTab]=useState<"invoices"|"account"|"deadlines"|"returns">("invoices");
+ const [tab,setTab]=useState<"invoices"|"account"|"deadlines"|"returns">(()=>{if(typeof window==="undefined")return "invoices";const t=new URLSearchParams(window.location.search).get("tab");return t==="account"||t==="deadlines"||t==="returns"?t:"invoices"});
  return <div className="page"><Header title="NAV"/>
   <div className="tabs nav-main-tabs">
    <button className={"tab "+(tab==="invoices"?"on":"")} onClick={()=>setTab("invoices")}>Számlák</button>
@@ -1942,6 +1942,8 @@ export default function Page(){
  const [screen,setScreen]=useState<Screen>("home");
  useEffect(()=>{
   const params=new URLSearchParams(window.location.search);
+  const target=params.get("screen");
+  if(target==="nav")setScreen("nav");
   if(params.get("open")==="finance"){
     setScreen("finance");
     const bank=params.get("bank");

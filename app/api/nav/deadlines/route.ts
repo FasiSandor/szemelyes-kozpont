@@ -1,5 +1,33 @@
 const SOURCE="https://nav.gov.hu/print/nyomtatvanyok/letoltesek/nyomtatvanykitolto_programok/nyomtatvanykitolto_programok_nav/2658";
 const CALENDAR="https://ugyfelportal.nav.gov.hu/";
+const CORE="https://calendar-core.vercel.app/api/source-events";
+
+async function syncCalendarCore(items:any[]){
+  const key=process.env.CALENDAR_SOURCE_API_KEY||"";
+  if(!key)return;
+  for(const x of items){
+    try{
+      await fetch(CORE,{
+        method:"POST",
+        headers:{"content-type":"application/json","x-calendar-source-key":key},
+        body:JSON.stringify({
+          title:x.title,date:x.date,allDay:true,timezone:"Europe/Budapest",
+          category:"work",location:"",note:x.detail,
+          sourceApp:"szemelyes-kozpont",sourceRecordId:x.id,
+          sourceUrl:"https://szemelyes-kozpont.vercel.app/?screen=nav&tab=deadlines",
+          metadata:{
+            linkedApp:"szemelyes-kozpont",
+            linkedLabel:"Személyes Központ · NAV Határidők",
+            linkedUrl:"https://szemelyes-kozpont.vercel.app/?screen=nav&tab=deadlines",
+            category:x.category,source:x.source
+          }
+        }),
+        cache:"no-store"
+      });
+    }catch{}
+  }
+}
+
 
 function normalizeDate(value:string){
   const m=value.match(/(20\d{2})\.(\d{2})\.(\d{2})\.?/);
@@ -18,9 +46,18 @@ export async function GET(){
       const found=[...html.matchAll(/20\d{2}\.\d{2}\.\d{2}\.?/g)]
         .map(x=>normalizeDate(x[0]))
         .filter((x):x is string=>Boolean(x));
-      const unique=[...new Set(found)].sort();
-      if(unique.length>=4){
-        dates=unique;
+      const year=new Date().getUTCFullYear();
+      const min=`${year}-01-01`,max=`${year+1}-12-31`;
+      const expectedMonths=new Set(["01","04","07","10"]);
+      const unique=[...new Set(found)]
+        .filter(date=>date>=min&&date<=max&&expectedMonths.has(date.slice(5,7)))
+        .sort();
+      const nearFallback=unique.filter(date=>fallback.some(base=>{
+        const a=new Date(date+"T12:00:00Z").getTime(),b=new Date(base+"T12:00:00Z").getTime();
+        return Math.abs(a-b)<=7*86400000;
+      }));
+      if(nearFallback.length>=4){
+        dates=nearFallback;
         live=true;
       }
     }
@@ -59,11 +96,13 @@ export async function GET(){
     }
   ];
 
+  const deadlines=[...quarterly,...annual].sort((a,b)=>a.date.localeCompare(b.date));
+  await syncCalendarCore(deadlines);
   return Response.json({
     live,
     sourceUrl:SOURCE,
     calendarUrl:CALENDAR,
     fetchedAt:new Date().toISOString(),
-    deadlines:[...quarterly,...annual].sort((a,b)=>a.date.localeCompare(b.date))
+    deadlines
   });
 }
