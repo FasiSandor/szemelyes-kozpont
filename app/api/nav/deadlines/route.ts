@@ -59,11 +59,43 @@ export async function GET(){
     }
   ];
 
+  const deadlines=[...quarterly,...annual].sort((a,b)=>a.date.localeCompare(b.date));
+
+  try{
+    const key=process.env.CALENDAR_SOURCE_API_KEY||"";
+    if(key){
+      const linkedUrl="https://szemelyes-kozpont.vercel.app/?screen=nav&tab=deadlines";
+      await Promise.allSettled(deadlines.map(item=>fetch("https://calendar-core.vercel.app/api/source-events",{
+        method:"POST",
+        headers:{"content-type":"application/json","x-calendar-source-key":key},
+        body:JSON.stringify({
+          title:item.title,
+          date:item.date,
+          allDay:true,
+          timezone:"Europe/Budapest",
+          category:"work",
+          location:"",
+          note:item.detail+" · "+item.category+" · "+item.source,
+          sourceApp:"szemelyes-kozpont",
+          sourceRecordId:item.id,
+          sourceUrl:linkedUrl,
+          metadata:{
+            linkedApp:"szemelyes-kozpont",
+            linkedLabel:"Személyes Központ · NAV Határidők",
+            linkedUrl,
+            sourceKind:"nav-deadline"
+          }
+        }),
+        cache:"no-store"
+      })));
+    }
+  }catch{}
+
   return Response.json({
     live,
     sourceUrl:SOURCE,
     calendarUrl:CALENDAR,
     fetchedAt:new Date().toISOString(),
-    deadlines:[...quarterly,...annual].sort((a,b)=>a.date.localeCompare(b.date))
+    deadlines
   });
 }
