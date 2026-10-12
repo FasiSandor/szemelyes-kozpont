@@ -1677,7 +1677,7 @@ function NavDeadlines(){
    const rows:NavDeadline[]=data.deadlines||[];
    setItems(rows);setLive(Boolean(data.live));
    const linkedUrl="https://szemelyes-kozpont.vercel.app/?screen=nav&tab=deadlines";
-   await Promise.allSettled(rows.map(x=>fetch("/api/calendar-core/events",{
+   await Promise.allSettled(rows.map(x=>fetch("/api/calendar-core",{
     method:"POST",headers:{"content-type":"application/json"},
     body:JSON.stringify({
       title:x.title,date:x.date,allDay:true,timezone:"Europe/Budapest",category:"work",
