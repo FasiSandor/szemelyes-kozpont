@@ -1672,8 +1672,20 @@ function NavDeadlines(){
  const [loading,setLoading]=useState(true);
  useEffect(()=>{
   let active=true;
-  fetch("/api/nav/deadlines",{cache:"no-store"}).then(r=>r.json()).then(data=>{
-   if(!active)return;setItems(data.deadlines||[]);setLive(Boolean(data.live));
+  fetch("/api/nav/deadlines",{cache:"no-store"}).then(r=>r.json()).then(async data=>{
+   if(!active)return;
+   const rows:NavDeadline[]=data.deadlines||[];
+   setItems(rows);setLive(Boolean(data.live));
+   const linkedUrl="https://szemelyes-kozpont.vercel.app/?screen=nav&tab=deadlines";
+   await Promise.allSettled(rows.map(x=>fetch("/api/calendar-core/events",{
+    method:"POST",headers:{"content-type":"application/json"},
+    body:JSON.stringify({
+      title:x.title,date:x.date,allDay:true,timezone:"Europe/Budapest",category:"work",
+      location:"",note:[x.detail,x.category,x.source].filter(Boolean).join(" · "),
+      sourceApp:"szemelyes-kozpont",sourceRecordId:x.id,sourceUrl:linkedUrl,
+      metadata:{linkedApp:"Személyes Központ",linkedLabel:"NAV határidő megnyitása",linkedUrl}
+    })
+   })));
   }).catch(()=>{}).finally(()=>{if(active)setLoading(false);});
   return()=>{active=false;};
  },[]);
