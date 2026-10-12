@@ -18,9 +18,18 @@ export async function GET(){
       const found=[...html.matchAll(/20\d{2}\.\d{2}\.\d{2}\.?/g)]
         .map(x=>normalizeDate(x[0]))
         .filter((x):x is string=>Boolean(x));
-      const unique=[...new Set(found)].sort();
-      if(unique.length>=4){
-        dates=unique;
+      const year=new Date().getUTCFullYear();
+      const min=`${year}-01-01`,max=`${year+1}-12-31`;
+      const expectedMonths=new Set(["01","04","07","10"]);
+      const unique=[...new Set(found)]
+        .filter(date=>date>=min&&date<=max&&expectedMonths.has(date.slice(5,7)))
+        .sort();
+      const nearFallback=unique.filter(date=>fallback.some(base=>{
+        const a=new Date(date+"T12:00:00Z").getTime(),b=new Date(base+"T12:00:00Z").getTime();
+        return Math.abs(a-b)<=7*86400000;
+      }));
+      if(nearFallback.length>=4){
+        dates=nearFallback;
         live=true;
       }
     }
