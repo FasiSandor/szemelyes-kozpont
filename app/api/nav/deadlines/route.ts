@@ -17,10 +17,16 @@ export async function GET(){
       const html=await res.text();
       const found=[...html.matchAll(/20\d{2}\.\d{2}\.\d{2}\.?/g)]
         .map(x=>normalizeDate(x[0]))
-        .filter((x):x is string=>Boolean(x));
+        .filter((x):x is string=>Boolean(x))
+        .filter(x=>{
+          const [,m,d]=x.split("-").map(Number);
+          return [1,4,7,10].includes(m)&&d>=10&&d<=15;
+        });
       const unique=[...new Set(found)].sort();
-      if(unique.length>=4){
-        dates=unique;
+      const minYear=new Date().getUTCFullYear()-1;
+      const plausible=unique.filter(x=>Number(x.slice(0,4))>=minYear).slice(-8);
+      if(plausible.length>=4){
+        dates=plausible;
         live=true;
       }
     }
@@ -65,7 +71,7 @@ export async function GET(){
     const key=process.env.CALENDAR_SOURCE_API_KEY||"";
     if(key){
       const linkedUrl="https://szemelyes-kozpont.vercel.app/?screen=nav&tab=deadlines";
-      await Promise.allSettled(deadlines.map(item=>fetch("https://calendar-core.vercel.app/api/source-events",{
+      await Promise.allSettled(deadlines.filter(item=>item.date>=today).map(item=>fetch("https://calendar-core.vercel.app/api/source-events",{
         method:"POST",
         headers:{"content-type":"application/json","x-calendar-source-key":key},
         body:JSON.stringify({
